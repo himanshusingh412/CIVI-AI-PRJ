@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Sora', sans-serif;
+  
+  --color-navy: #1A2B5E;
+  --color-navy-dark: #111d42;
+  --color-navy-light: #243474;
+  --color-saffron: #FF6B00;
+  --color-saffron-light: #ff8c35;
+  --color-saffron-pale: #fff4eb;
+
+  /* Dark Mode Overrides (used with .dark class) */
+  --color-bg-main: var(--color-gray-50);
+  --color-text-main: var(--color-navy);
+}
+
+.dark {
+  --color-bg-main: #0a0f1d;
+  --color-text-main: #f8f9fc;
+  --color-navy: #f8f9fc;
+  --color-gray-50: #141b2d;
+  --color-gray-100: #1f2937;
+  --color-gray-200: #374151;
+  --color-gray-400: #9ca3af;
+  --color-gray-600: #d1d5db;
+  --color-white: #111827;
+}
+
+@layer base {
+  body {
+    @apply transition-colors duration-300;
+  }
+}
+
+body {
+  background-color: var(--color-bg-main);
+  color: var(--color-text-main);
+  @apply font-sans;
+  margin: 0;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #dde1ef;
+  border-radius: 99px;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+.animate-typing {
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+

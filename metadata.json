@@ -1,0 +1,6 @@
+{
+  "name": "CivicAI",
+  "description": "An AI-powered citizen helpline and multi-tier complaint management system for efficient governance.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": []
+}
