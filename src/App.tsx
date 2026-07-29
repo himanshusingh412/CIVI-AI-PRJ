@@ -976,6 +976,15 @@ export default function App() {
             </form>
           ) : (
             <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); handleVerifyOtp(); }}>
+              {/* Prominent Demo OTP display box */}
+              <div className="p-3.5 bg-amber-50/90 border border-amber-300/80 rounded-xl text-center shadow-xs">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-1">Your Verification Code</p>
+                <div className="text-2xl font-black font-mono text-amber-950 tracking-[0.25em] select-all my-0.5">
+                  {otpValue || '123456'}
+                </div>
+                <p className="text-[11px] text-amber-700 font-medium">Auto-filled for instant sign-in (or enter any 6 digits)</p>
+              </div>
+
               <div>
                 <label htmlFor="otp" className="block text-[13px] font-semibold text-[#0F172A] mb-1.5">
                   6-digit code
