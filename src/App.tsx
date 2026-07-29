@@ -32,13 +32,17 @@ import {
   LogOut,
   Info,
   Smartphone,
-  Fingerprint,
+  Mail,
   ShieldCheck,
   Award,
   Stars,
   Activity,
   X,
-  Phone
+  Phone,
+  Locate,
+  Briefcase,
+  Sparkles,
+  Gauge
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -55,9 +59,32 @@ import {
   PieChart,
   Pie
 } from 'recharts';
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Complaint, ViewType, LangType, ChatMessage, SystemNotification } from './types';
+import {
+  requestOtp,
+  verifyOtp,
+  googleSignIn,
+  logout,
+  validateSession,
+  setToken,
+  validateIdentifier,
+  formatMobile,
+  type AuthError,
+  type Channel,
+} from './services/authService';
+import { sendChat, getBrowserLocation, type ChatTurn } from './services/chatService';
+
+type LivePin = {
+  id: string;
+  lat: number;
+  lng: number;
+  label: string;
+  confidence: 'exact' | 'approximate' | 'city';
+  category: string;
+  priority: string;
+};
 import { OFFICERS, RESPONSES } from './constants';
 import { analyzeComplaint, generateResponseTemplates } from './services/aiService';
 
@@ -134,12 +161,32 @@ export default function App() {
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
   const [showFeedbackModal, setShowFeedbackModal] = useState<Complaint | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [loginStep, setLoginStep] = useState<'aadhaar' | 'otp'>('aadhaar');
-  const [aadhaarNumber, setAadhaarNumber] = useState('');
+  const [loginStep, setLoginStep] = useState<'identify' | 'otp'>('identify');
+  const [channel, setChannel] = useState<Channel>('phone');
+  const [identifier, setIdentifier] = useState('');
   const [otpValue, setOtpValue] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
+  const [resendIn, setResendIn] = useState(0);
+  const [lockedFor, setLockedFor] = useState(0);
+  const [maskedIdentifier, setMaskedIdentifier] = useState('');
   const [rtiMode, setRtiMode] = useState(false);
+  const [trackSearched, setTrackSearched] = useState(false);
+  const [selectedOfficer, setSelectedOfficer] = useState<{ name: string; ward: string; count: number; solved: number; pending: number; rating: number } | null>(null);
+  const [mapFlyTarget, setMapFlyTarget] = useState<{ lat: number; lng: number } | null>(null);
+  // AI chat + live map
+  const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
+  const [livePins, setLivePins] = useState<LivePin[]>([]);
+  const [activePin, setActivePin] = useState<LivePin | null>(null);
+  const [showLiveMap, setShowLiveMap] = useState(false);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [aiProvider, setAiProvider] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '';
 
   // Auto-escalation checker
   useEffect(() => {
@@ -202,6 +249,178 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  // Restore an existing session on load
+  useEffect(() => {
+    validateSession().then(valid => { if (valid) setIsAuthenticated(true); });
+  }, []);
+
+  // Ask for GPS once the citizen is signed in — improves map accuracy
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    getBrowserLocation().then(coords => { if (coords) setUserCoords(coords); });
+  }, [isAuthenticated]);
+
+  // Resend-OTP cooldown ticker
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setInterval(() => setResendIn(s => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [resendIn]);
+
+  // Lockout ticker
+  useEffect(() => {
+    if (lockedFor <= 0) return;
+    const t = setInterval(() => setLockedFor(s => {
+      const next = Math.max(0, s - 1);
+      if (next === 0) setAuthError(null);
+      return next;
+    }), 1000);
+    return () => clearInterval(t);
+  }, [lockedFor]);
+
+  const handleRequestOtp = async () => {
+    setAuthError(null); setAuthInfo(null);
+
+    const check = validateIdentifier(identifier, channel);
+    if (!check.ok) { setAuthError(check.reason!); return; }
+
+    setAuthBusy(true);
+    const res = await requestOtp(identifier);
+    setAuthBusy(false);
+
+    if (!('ok' in res) || res.ok !== true) {
+      const err = res as AuthError;
+      setAuthError(err.message);
+      if (err.retryAfterSec) {
+        if (err.error === 'locked_out' || err.error === 'otp_limit') setLockedFor(err.retryAfterSec);
+        else setResendIn(err.retryAfterSec);
+      }
+      return;
+    }
+
+    setMaskedIdentifier(res.maskedIdentifier);
+    setLoginStep('otp');
+    setOtpValue('');
+    setAttemptsLeft(null);
+    setResendIn(30);
+    setAuthInfo(
+      res.devOtp
+        ? `Code sent to ${res.maskedIdentifier} · dev code: ${res.devOtp}`
+        : `A 6-digit code was sent by ${res.channel === 'email' ? 'email' : 'SMS'} to ${res.maskedIdentifier}`
+    );
+  };
+
+  const handleVerifyOtp = async () => {
+    setAuthError(null);
+    if (!/^\d{6}$/.test(otpValue)) { setAuthError('Enter the 6-digit code.'); return; }
+
+    setAuthBusy(true);
+    const res = await verifyOtp(identifier, otpValue);
+    setAuthBusy(false);
+
+    if (!('ok' in res) || res.ok !== true) {
+      const err = res as AuthError;
+      setAuthError(err.message);
+      if (typeof err.attemptsRemaining === 'number') setAttemptsLeft(err.attemptsRemaining);
+      if (err.error === 'locked_out' && err.retryAfterSec) {
+        setLockedFor(err.retryAfterSec);
+        setLoginStep('identify');
+        setAttemptsLeft(null);
+      }
+      if (err.error === 'expired') { setLoginStep('identify'); setAttemptsLeft(null); }
+      setOtpValue('');
+      return;
+    }
+
+    setToken(res.token);
+    setIsAuthenticated(true);
+    setAuthError(null); setAuthInfo(null); setAttemptsLeft(null);
+    setOtpValue(''); setIdentifier('');
+    showToast('Login successful!');
+    setShowOnboarding(true);
+  };
+
+  const handleGoogleCredential = async (response: { credential?: string }) => {
+    if (!response?.credential) return;
+    setAuthError(null); setAuthInfo(null); setAuthBusy(true);
+    const res = await googleSignIn(response.credential);
+    setAuthBusy(false);
+
+    if (!('ok' in res) || res.ok !== true) {
+      const err = res as AuthError;
+      setAuthError(err.message);
+      return;
+    }
+
+    setToken(res.token);
+    setIsAuthenticated(true);
+    setAuthError(null); setAuthInfo(null); setAttemptsLeft(null);
+    setOtpValue(''); setIdentifier('');
+    showToast('Signed in with Google!');
+    setShowOnboarding(true);
+  };
+
+  // Render the Google Identity Services button once the script is loaded — only while signing in.
+  useEffect(() => {
+    if (isAuthenticated || loginStep !== 'identify' || !GOOGLE_CLIENT_ID) return;
+
+    let cancelled = false;
+    const tryRender = () => {
+      if (cancelled) return;
+      const g = (window as any).google;
+      if (!g?.accounts?.id || !googleBtnRef.current) {
+        setTimeout(tryRender, 200);
+        return;
+      }
+      g.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
+      googleBtnRef.current.innerHTML = '';
+      g.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline', size: 'large', width: 344, text: 'continue_with', shape: 'pill',
+      });
+    };
+    tryRender();
+    return () => { cancelled = true; };
+  }, [isAuthenticated, loginStep, GOOGLE_CLIENT_ID]);
+
+  const handleLogout = async () => {
+    await logout();
+    setIsAuthenticated(false);
+    setLoginStep('identify');
+    setIdentifier(''); setOtpValue('');
+    setAuthError(null); setAuthInfo(null); setAttemptsLeft(null);
+    showToast('Signed out securely.');
+  };
+
+  const markNotificationRead = (id: string) =>
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+
+  const markAllNotificationsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    showToast('All notifications marked as read.');
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Template copied to clipboard!');
+    } catch {
+      // clipboard API blocked (http / older browsers) — fall back to execCommand
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('Template copied to clipboard!');
+      } catch {
+        showToast('Copy failed — please select the text manually.');
+      }
+      document.body.removeChild(ta);
+    }
+  };
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
@@ -231,16 +450,70 @@ export default function App() {
 
   const handleSendMessage = (text: string) => {
     if (!text.trim()) return;
-    
+    if (text.length > 2000) {
+      showToast('Message too long — please keep it under 2000 characters.');
+      return;
+    }
+
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       content: text,
       type: 'user',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-    
+
     setMessages(prev => [...prev, userMsg]);
+    setChatHistory(prev => [...prev, { role: 'user', content: text }].slice(-12));
     processUserInput(text);
+  };
+
+  /** Routes a message to the AI backend and syncs the live map. */
+  const runAiTurn = async (text: string) => {
+    setIsTyping(true);
+    const res = await sendChat(text, chatHistory, userCoords);
+    setIsTyping(false);
+
+    setChatHistory(prev => [...prev, { role: 'assistant', content: res.reply }].slice(-12));
+    setAiProvider(res.provider ?? null);
+
+    if (res.location) {
+      const pin: LivePin = {
+        id: `pin-${Date.now()}`,
+        lat: res.location.lat,
+        lng: res.location.lng,
+        label: res.location.label,
+        confidence: res.location.confidence,
+        category: res.category,
+        priority: res.priority,
+      };
+      setLivePins(prev => [...prev.slice(-9), pin]);
+      setActivePin(pin);
+      setShowLiveMap(true);
+    }
+
+    if (res.rateLimited) showToast('AI limit reached — using offline mode.');
+
+    setMessages(prev => [...prev, {
+      id: `${Date.now()}-bot`,
+      content: res.reply,
+      type: 'bot',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
+
+    // AI has everything it needs → prime the filing flow
+    if (res.readyToFile && res.intent === 'report_complaint') {
+      setPendingComplaint(prev => ({
+        ...prev,
+        description: text,
+        category: res.category,
+        priority: res.priority,
+        sentiment: res.sentiment,
+        ...(res.location ? { lat: res.location.lat, lng: res.location.lng } : {}),
+      }));
+      setAiSuggestedCategory(res.category);
+      setChatStep('ask_photo');
+      botReply('Would you like to attach a photo for faster resolution? (or say "skip")', 900);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -306,7 +579,8 @@ export default function App() {
         return;
       }
       
-      botReply(r.menu + "\n\n📝 Register a new complaint\n🔍 Check complaint status\n🚨 Emergency assistance\n👮 Talk to an officer");
+      // Nothing scripted matched → hand off to the AI assistant (Gemini/Claude)
+      await runAiTurn(text);
       return;
     }
 
@@ -522,90 +796,313 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className="h-screen w-full bg-navy flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full opacity-10">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-saffron rounded-full blur-[100px] animate-pulse"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-white rounded-full blur-[100px] animate-pulse"></div>
+      <div className="min-h-screen w-full bg-[#0F172A] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+        {/* Ambient depth — decorative only, hidden from assistive tech */}
+        <div aria-hidden="true" className="aurora-bg opacity-40">
+          <div className="aurora-blob absolute -top-[15%] -left-[10%] w-[45%] h-[45%] bg-[#0369A1]" />
+          <div className="aurora-blob absolute -bottom-[15%] -right-[10%] w-[45%] h-[45%] bg-[#C2410C]" style={{ animationDelay: '5s' }} />
+          <div className="aurora-blob absolute top-[40%] left-[60%] w-[30%] h-[30%] bg-[#7C3AED]" style={{ animationDelay: '9s' }} />
         </div>
-        
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative z-10"
-        >
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-navy rounded-2xl flex items-center justify-center mx-auto mb-4 text-white">
-              <ShieldCheck size={32} />
-            </div>
-            <h1 className="font-display font-bold text-2xl text-navy">CivicAI Login</h1>
-            <p className="text-gray-400 text-sm">Citizen Social Authentication</p>
-          </div>
 
-          <div className="space-y-6">
-            {loginStep === 'aadhaar' ? (
-              <div className="space-y-4">
-                <div className="relative">
-                  <Fingerprint className="absolute left-4 top-3.5 text-gray-400" size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Enter 12-digit Aadhaar Number"
-                    value={aadhaarNumber}
-                    onChange={(e) => setAadhaarNumber(e.target.value)}
-                    className="w-full h-12 pl-12 pr-4 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-navy outline-none text-sm transition-all"
-                  />
-                </div>
-                <button 
-                  onClick={() => setLoginStep('otp')}
-                  className="w-full h-12 bg-navy text-white rounded-xl font-bold hover:bg-saffron transition-all flex items-center justify-center gap-2"
-                >
-                  Request OTP <ChevronRight size={18} />
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                 <div className="relative">
-                  <Smartphone className="absolute left-4 top-3.5 text-gray-400" size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Enter 4-digit OTP"
-                    value={otpValue}
-                    onChange={(e) => setOtpValue(e.target.value)}
-                    className="w-full h-12 pl-12 pr-4 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-navy outline-none text-sm tracking-[1em] font-bold transition-all text-center"
-                  />
-                </div>
-                <button 
-                  onClick={() => {
-                    setIsAuthenticated(true);
-                    showToast("Login Successful!");
-                    setShowOnboarding(true);
-                  }}
-                  className="w-full h-12 bg-navy text-white rounded-xl font-bold hover:bg-saffron transition-all flex items-center justify-center gap-2"
-                >
-                  Verify & Access <ChevronRight size={18} />
-                </button>
-                <button onClick={() => setLoginStep('aadhaar')} className="w-full text-xs font-bold text-gray-400 hover:text-navy uppercase tracking-widest text-center mt-2">Change Aadhaar Number</button>
+        <TiltCard maxTilt={4} className="w-full max-w-md">
+        <motion.main
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+          className="bg-white rounded-2xl p-7 sm:p-9 w-full shadow-2xl relative z-10 border border-white/10 glow-navy"
+        >
+          <header className="text-center mb-7">
+            <div aria-hidden="true" className="float-y w-14 h-14 bg-gradient-to-br from-navy via-navy-light to-cta rounded-xl flex items-center justify-center mx-auto mb-4 text-white shadow-lg">
+              <ShieldCheck size={28} strokeWidth={2} />
+            </div>
+            <h1 className="font-display font-bold text-2xl text-[#0F172A] tracking-tight">
+              Sign in to CivicAI
+            </h1>
+            <p className="text-[#475569] text-sm mt-1.5">
+              {loginStep === 'identify'
+                ? 'Sign in with your email or mobile number'
+                : `Enter the code we sent by ${channel === 'email' ? 'email' : 'SMS'}`}
+            </p>
+          </header>
+
+          {/* Step indicator */}
+          <ol className="flex items-center gap-2 mb-6" aria-label="Sign-in progress">
+            <li className="flex-1 flex items-center gap-2">
+              <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold shrink-0 ${
+                loginStep === 'identify' ? 'bg-[#0369A1] text-white' : 'bg-[#15803D] text-white'
+              }`}>
+                {loginStep === 'identify' ? '1' : <CheckCircle2 size={13} strokeWidth={3} />}
+              </span>
+              <span className={`h-1 flex-1 rounded-full ${loginStep === 'otp' ? 'bg-[#15803D]' : 'bg-[#E2E8F0]'}`} />
+            </li>
+            <li className="flex items-center gap-2">
+              <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold ${
+                loginStep === 'otp' ? 'bg-[#0369A1] text-white' : 'bg-[#E2E8F0] text-[#475569]'
+              }`}>2</span>
+            </li>
+          </ol>
+
+          {/* Live region so screen readers announce errors and status */}
+          <div aria-live="polite" aria-atomic="true">
+            {authError && (
+              <div role="alert" className="flex items-start gap-2.5 p-3.5 bg-[#FEF2F2] border border-[#FCA5A5] rounded-xl mb-5">
+                <AlertTriangle size={16} className="text-[#B91C1C] mt-0.5 shrink-0" aria-hidden="true" />
+                <p className="text-[13px] font-semibold text-[#B91C1C]">
+                  {authError}
+                  {lockedFor > 0 && (
+                    <span className="block mt-1 font-mono text-xs font-bold">
+                      Unlocks in {Math.floor(lockedFor / 60)}:{String(lockedFor % 60).padStart(2, '0')}
+                    </span>
+                  )}
+                </p>
               </div>
             )}
-            <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase tracking-widest justify-center mt-4">
-              <ShieldCheck size={12} className="text-green-500" />
-              Verified Govt System
-            </div>
+            {authInfo && !authError && (
+              <div role="status" className="flex items-start gap-2.5 p-3.5 bg-[#F0FDF4] border border-[#86EFAC] rounded-xl mb-5">
+                <CheckCircle2 size={16} className="text-[#15803D] mt-0.5 shrink-0" aria-hidden="true" />
+                <p className="text-[13px] font-semibold text-[#15803D]">{authInfo}</p>
+              </div>
+            )}
           </div>
-        </motion.div>
+
+          {loginStep === 'identify' ? (
+            <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); handleRequestOtp(); }}>
+              {/* Channel toggle */}
+              <div role="tablist" aria-label="Sign-in method" className="grid grid-cols-2 gap-1 p-1 bg-[#F1F5F9] rounded-xl">
+                {([
+                  { key: 'phone' as Channel, label: 'Mobile', Icon: Smartphone },
+                  { key: 'email' as Channel, label: 'Email', Icon: Mail },
+                ]).map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={channel === key}
+                    disabled={authBusy || lockedFor > 0}
+                    onClick={() => { setChannel(key); setIdentifier(''); setAuthError(null); setAuthInfo(null); }}
+                    className={`h-10 rounded-lg text-[14px] font-semibold flex items-center justify-center gap-2 ${
+                      channel === key
+                        ? 'bg-white text-[#0F172A] shadow-sm'
+                        : 'text-[#475569] hover:text-[#0F172A]'
+                    }`}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {channel === 'phone' ? (
+                <div>
+                  <label htmlFor="identifier" className="block text-[13px] font-semibold text-[#0F172A] mb-1.5">
+                    Mobile number
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569] text-[15px] font-semibold pointer-events-none">
+                      +91
+                    </span>
+                    <input
+                      id="identifier"
+                      name="identifier"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel-national"
+                      maxLength={11}
+                      required
+                      autoFocus
+                      aria-describedby="identifier-hint"
+                      aria-invalid={!!authError}
+                      disabled={authBusy || lockedFor > 0}
+                      placeholder="98765 43210"
+                      value={identifier}
+                      onChange={(e) => { setIdentifier(formatMobile(e.target.value)); setAuthError(null); }}
+                      className="w-full h-12 pl-14 pr-4 bg-white border-2 border-[#CBD5E1] rounded-xl outline-none text-base tracking-[0.06em] font-mono text-[#0F172A] placeholder:text-[#94A3B8] hover:border-[#94A3B8] focus:border-[#0369A1] disabled:bg-[#F1F5F9] disabled:opacity-60"
+                    />
+                  </div>
+                  <p id="identifier-hint" className="text-xs text-[#475569] mt-1.5">
+                    We'll text a 6-digit code to this number
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="identifier" className="block text-[13px] font-semibold text-[#0F172A] mb-1.5">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569]" size={18} aria-hidden="true" />
+                    <input
+                      id="identifier"
+                      name="identifier"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      maxLength={254}
+                      required
+                      autoFocus
+                      aria-describedby="identifier-hint"
+                      aria-invalid={!!authError}
+                      disabled={authBusy || lockedFor > 0}
+                      placeholder="you@example.com"
+                      value={identifier}
+                      onChange={(e) => { setIdentifier(e.target.value); setAuthError(null); }}
+                      className="w-full h-12 pl-11 pr-4 bg-white border-2 border-[#CBD5E1] rounded-xl outline-none text-base text-[#0F172A] placeholder:text-[#94A3B8] hover:border-[#94A3B8] focus:border-[#0369A1] disabled:bg-[#F1F5F9] disabled:opacity-60"
+                    />
+                  </div>
+                  <p id="identifier-hint" className="text-xs text-[#475569] mt-1.5">
+                    We'll email a 6-digit code to this address
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authBusy || lockedFor > 0 || !validateIdentifier(identifier, channel).ok}
+                className="btn-sheen w-full h-12 bg-gradient-to-r from-[#0369A1] to-[#0284C7] text-white rounded-xl font-semibold text-[15px] hover:shadow-lg hover:shadow-[#0369A1]/30 active:scale-[0.99] flex items-center justify-center gap-2 disabled:bg-[#94A3B8] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+              >
+                {authBusy ? (
+                  <>
+                    <span aria-hidden="true" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Sending code…
+                  </>
+                ) : lockedFor > 0 ? 'Temporarily locked' : (
+                  <>Send code <ChevronRight size={18} aria-hidden="true" /></>
+                )}
+              </button>
+
+              <p className="text-xs text-[#475569] text-center">
+                Limits: 5 codes per 15 minutes · 9 verification attempts
+              </p>
+            </form>
+          ) : (
+            <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); handleVerifyOtp(); }}>
+              <div>
+                <label htmlFor="otp" className="block text-[13px] font-semibold text-[#0F172A] mb-1.5">
+                  6-digit code
+                </label>
+                <div className="relative">
+                  {channel === 'email'
+                    ? <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569]" size={18} aria-hidden="true" />
+                    : <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569]" size={18} aria-hidden="true" />}
+                  <input
+                    id="otp"
+                    name="otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    aria-describedby="otp-hint"
+                    aria-invalid={!!authError}
+                    disabled={authBusy}
+                    placeholder="000000"
+                    value={otpValue}
+                    onChange={(e) => { setOtpValue(e.target.value.replace(/\D/g, '').slice(0, 6)); setAuthError(null); }}
+                    className="w-full h-14 pl-11 pr-4 bg-white border-2 border-[#CBD5E1] rounded-xl outline-none text-2xl tracking-[0.5em] font-bold font-mono text-center text-[#0F172A] placeholder:text-[#CBD5E1] hover:border-[#94A3B8] focus:border-[#0369A1] disabled:bg-[#F1F5F9] disabled:opacity-60"
+                  />
+                </div>
+                <p id="otp-hint" className="text-xs text-[#475569] mt-1.5 text-center">
+                  Sent to <span className="font-mono font-semibold text-[#0F172A]">{maskedIdentifier}</span> · valid 5 minutes
+                </p>
+              </div>
+
+              {attemptsLeft !== null && attemptsLeft > 0 && (
+                <div className="flex flex-col items-center gap-2" role="status">
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: 9 }).map((_, i) => (
+                      <span
+                        key={i}
+                        aria-hidden="true"
+                        className={`h-1.5 w-4 rounded-full ${i < attemptsLeft ? 'bg-[#15803D]' : 'bg-[#FCA5A5]'}`}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-xs font-semibold text-[#475569]">
+                    {attemptsLeft} of 9 attempts left
+                  </span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authBusy || otpValue.length !== 6}
+                className="btn-sheen w-full h-12 bg-gradient-to-r from-[#0369A1] to-[#0284C7] text-white rounded-xl font-semibold text-[15px] hover:shadow-lg hover:shadow-[#0369A1]/30 active:scale-[0.99] flex items-center justify-center gap-2 disabled:bg-[#94A3B8] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+              >
+                {authBusy ? (
+                  <>
+                    <span aria-hidden="true" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Verifying…
+                  </>
+                ) : (
+                  <>Verify and continue <ChevronRight size={18} aria-hidden="true" /></>
+                )}
+              </button>
+
+              <div className="flex items-center justify-center gap-4 pt-1">
+                <button
+                  type="button"
+                  onClick={handleRequestOtp}
+                  disabled={authBusy || resendIn > 0}
+                  className="text-[13px] font-semibold text-[#0369A1] hover:text-[#075985] hover:underline disabled:text-[#94A3B8] disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
+                </button>
+                <span aria-hidden="true" className="text-[#CBD5E1]">|</span>
+                <button
+                  type="button"
+                  onClick={() => { setLoginStep('identify'); setOtpValue(''); setAuthError(null); setAuthInfo(null); setAttemptsLeft(null); }}
+                  className="text-[13px] font-semibold text-[#475569] hover:text-[#0F172A] hover:underline"
+                >
+                  {channel === 'email' ? 'Change email' : 'Change number'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {loginStep === 'identify' && GOOGLE_CLIENT_ID && (
+            <>
+              <div className="flex items-center gap-3 my-5" aria-hidden="true">
+                <span className="h-px flex-1 bg-[#E2E8F0]" />
+                <span className="text-[11px] font-bold text-[#94A3B8] uppercase tracking-widest">or</span>
+                <span className="h-px flex-1 bg-[#E2E8F0]" />
+              </div>
+              <div ref={googleBtnRef} className="flex justify-center [&>div]:!w-full" />
+            </>
+          )}
+
+          <footer className="flex items-center gap-2 justify-center mt-7 pt-5 border-t border-[#E2E8F0]">
+            <ShieldCheck size={14} className="text-[#15803D]" aria-hidden="true" />
+            <span className="text-xs font-semibold text-[#475569]">
+              Government-verified · Codes are hashed, never stored in plain text
+            </span>
+          </footer>
+        </motion.main>
+        </TiltCard>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-navy transition-colors duration-300 dark:bg-[#0a0f1d] dark:text-[#f8f9fc]">
+    <div className="relative flex flex-col h-screen overflow-hidden bg-gray-50 text-navy transition-colors duration-300 dark:bg-[#0a0f1d] dark:text-[#f8f9fc]">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
+
+      {/* Ambient premium depth — dark mode only, decorative */}
+      {isDarkMode && (
+        <div aria-hidden="true" className="aurora-bg fixed inset-0 z-0">
+          <div className="aurora-blob w-[32rem] h-[32rem] bg-[#0369A1] -top-40 -left-40" />
+          <div className="aurora-blob w-[28rem] h-[28rem] bg-[#C2410C] top-1/3 -right-40" style={{ animationDelay: '4s' }} />
+          <div className="aurora-blob w-[26rem] h-[26rem] bg-[#7C3AED] bottom-0 left-1/4" style={{ animationDelay: '8s' }} />
+        </div>
+      )}
+
       {/* Top Navigation */}
-      <nav className="h-20 bg-white dark:bg-[#111827] border-b border-gray-100 dark:border-gray-800 px-8 flex items-center justify-between shrink-0 relative z-[100]">
+      <nav className="h-20 glass border-b border-gray-100 dark:border-white/5 px-8 flex items-center justify-between shrink-0 relative z-[100]">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-navy rounded-xl flex items-center justify-center text-white shadow-lg shadow-navy/20 dark:shadow-none">
+          <div className="float-y w-11 h-11 bg-gradient-to-br from-navy via-navy-light to-cta dark:from-cta dark:via-sky-500 dark:to-saffron rounded-xl flex items-center justify-center text-white shadow-lg shadow-navy/30 dark:glow-navy relative" style={{ transformStyle: 'preserve-3d' }}>
             <ShieldCheck size={24} />
           </div>
           <div>
-            <h1 className="font-display font-bold text-xl tracking-tight">CivicAI</h1>
+            <h1 className="font-display font-bold text-xl tracking-tight text-gradient-premium">CivicAI</h1>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
               <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">New Delhi Municipal Council</span>
@@ -643,16 +1140,31 @@ export default function App() {
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800 overflow-hidden z-[100]"
+                    className="absolute right-0 mt-2 w-80 glass-strong rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800 overflow-hidden z-[100]"
                   >
                     <div className="p-4 border-b border-gray-50 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
                       <span className="text-[10px] font-black uppercase tracking-widest text-navy dark:text-gray-300">Notifications</span>
-                      <button className="text-[10px] font-bold text-saffron uppercase">Mark all read</button>
+                      <button
+                        onClick={markAllNotificationsRead}
+                        disabled={!notifications.some(n => !n.read)}
+                        className="text-[10px] font-bold text-saffron uppercase hover:underline disabled:opacity-40 disabled:no-underline"
+                      >
+                        Mark all read
+                      </button>
                     </div>
                     <div className="max-h-[300px] overflow-auto">
-                      {notifications.map(n => (
-                        <div key={n.id} className={`p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer ${!n.read ? 'bg-saffron/5' : ''}`}>
-                          <h4 className="text-xs font-bold text-navy dark:text-white">{n.title}</h4>
+                      {notifications.length === 0 ? (
+                        <p className="p-6 text-center text-[11px] text-gray-400 font-semibold">No notifications</p>
+                      ) : notifications.map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => markNotificationRead(n.id)}
+                          className={`p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer ${!n.read ? 'bg-saffron/5' : ''}`}
+                        >
+                          <h4 className="text-xs font-bold text-navy dark:text-white flex items-center gap-2">
+                            {!n.read && <span className="w-1.5 h-1.5 bg-saffron rounded-full shrink-0" />}
+                            {n.title}
+                          </h4>
                           <p className="text-[11px] text-gray-500 mt-0.5">{n.message}</p>
                           <span className="text-[9px] font-bold text-gray-400 mt-2 block">{n.timestamp}</span>
                         </div>
@@ -669,7 +1181,7 @@ export default function App() {
             >
               <LayoutDashboard size={16} /> Dashboard
             </button>
-            <button onClick={() => setIsAuthenticated(false)} className="w-10 h-10 rounded-xl text-gray-300 hover:text-red-500 transition-all">
+            <button onClick={handleLogout} title="Sign out" className="w-10 h-10 rounded-xl text-gray-300 hover:text-red-500 transition-all">
               <LogOut size={18} />
             </button>
           </div>
@@ -677,9 +1189,9 @@ export default function App() {
       </nav>
 
       {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative z-10">
         {/* Sidebar */}
-        <aside className="w-[240px] bg-white border-r border-gray-100 flex flex-col py-6 shrink-0">
+        <aside className="w-[240px] glass border-r border-gray-100 dark:border-white/5 flex flex-col py-6 shrink-0">
           <div className="px-5 mb-2 text-[10px] font-bold text-gray-400 tracking-[0.15em] uppercase">Main Menu</div>
           <SidebarItem 
             active={view === 'chat'} 
@@ -735,9 +1247,9 @@ export default function App() {
           />
           
           <div className="mt-auto px-4">
-            <button 
+            <button
               onClick={() => { setView('chat'); processUserInput('emergency'); }}
-              className="w-full py-2.5 bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-200 hover:-translate-y-0.5 transition-all active:scale-95"
+              className="btn-sheen w-full py-2.5 bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-500/30 dark:shadow-red-900/40 hover:-translate-y-0.5 transition-all active:scale-95"
             >
               <AlertTriangle size={14} /> 
               {lang === 'en' ? 'EMERGENCY HELP' : 'आपातकालीन सहायता'}
@@ -758,14 +1270,118 @@ export default function App() {
               >
                 <div className="flex items-center gap-4 pb-4 border-b border-gray-100">
                   <div className="w-12 h-12 bg-navy rounded-2xl flex items-center justify-center text-2xl shadow-md">🤖</div>
-                  <div>
+                  <div className="flex-1">
                     <h2 className="font-display font-bold text-lg">{lang === 'en' ? 'CivicAI Assistant' : 'CivicAI सहायक'}</h2>
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
                       <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                       {lang === 'en' ? 'Online • Govt. Verified System' : 'ऑनलाइन • सरकारी प्रणाली'}
+                      {aiProvider && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[9px] font-bold uppercase tracking-wide">
+                          {aiProvider === 'fallback' ? 'offline mode' : aiProvider}
+                        </span>
+                      )}
                     </div>
                   </div>
+
+                  {livePins.length > 0 && (
+                    <button
+                      onClick={() => setShowLiveMap(v => !v)}
+                      className={`h-10 px-4 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all ${
+                        showLiveMap
+                          ? 'bg-navy text-white border-navy'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-navy hover:border-navy'
+                      }`}
+                    >
+                      <MapPin size={14} />
+                      {showLiveMap ? 'Hide Map' : `Live Map (${livePins.length})`}
+                    </button>
+                  )}
                 </div>
+
+                {/* ─── LIVE MAP: pins drop as the AI extracts locations ─── */}
+                <AnimatePresence>
+                  {showLiveMap && livePins.length > 0 && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 260, opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className={`rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 relative shrink-0 shadow-lg map-premium ${isDarkMode ? 'map-dark' : ''}`}
+                    >
+                      <MapContainer
+                        key={activePin?.id || 'live-map'}
+                        center={[activePin?.lat ?? 28.6139, activePin?.lng ?? 77.2090]}
+                        zoom={activePin?.confidence === 'exact' ? 15 : 12}
+                        style={{ height: '260px', width: '100%' }}
+                        scrollWheelZoom={false}
+                      >
+                        <TileLayer
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                          attribution="&copy; OpenStreetMap"
+                        />
+                        <MapController target={mapFlyTarget} zoom={16} />
+                        {livePins.map((p, i) => (
+                          <CircleMarker
+                            key={p.id}
+                            center={[p.lat, p.lng]}
+                            radius={i === livePins.length - 1 ? 13 : 8}
+                            pathOptions={{
+                              color:
+                                p.priority === 'Critical' ? '#dc2626' :
+                                p.priority === 'High' ? '#f97316' :
+                                p.priority === 'Medium' ? '#eab308' : '#22c55e',
+                              fillOpacity: i === livePins.length - 1 ? 0.75 : 0.35,
+                              weight: i === livePins.length - 1 ? 3 : 1.5,
+                            }}
+                            eventHandlers={{ click: () => setActivePin(p) }}
+                          >
+                            <Popup>
+                              <div className="text-xs">
+                                <strong>{p.category}</strong><br />
+                                {p.label}<br />
+                                <span className="text-gray-500">
+                                  Priority: {p.priority} · {p.confidence}
+                                </span>
+                              </div>
+                            </Popup>
+                          </CircleMarker>
+                        ))}
+                        {userCoords && (
+                          <CircleMarker
+                            center={[userCoords.lat, userCoords.lng]}
+                            radius={7}
+                            pathOptions={{ color: '#2563eb', fillOpacity: 0.9, weight: 2 }}
+                          >
+                            <Popup><span className="text-xs">You are here</span></Popup>
+                          </CircleMarker>
+                        )}
+                      </MapContainer>
+
+                      <button
+                        onClick={async () => {
+                          const coords = await getBrowserLocation();
+                          if (coords) { setUserCoords(coords); setMapFlyTarget(coords); showToast('Centered on your location'); }
+                          else showToast('Could not access your location');
+                        }}
+                        title="Locate me"
+                        className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-100 dark:border-gray-800 shadow-lg flex items-center justify-center text-navy dark:text-white hover:text-cta hover:-translate-y-0.5 transition-all"
+                      >
+                        <Locate size={16} />
+                      </button>
+
+                      {activePin && (
+                        <div className="absolute bottom-3 left-3 right-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur px-4 py-2.5 rounded-xl border border-gray-100 dark:border-gray-800 shadow-lg z-[500] flex items-center gap-3">
+                          <MapPin size={15} className="text-saffron shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-bold text-navy dark:text-white truncate">{activePin.label}</p>
+                            <p className="text-[10px] text-gray-400">
+                              {activePin.category} · {activePin.priority} · {activePin.confidence} location
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-4 py-4">
                   {messages.map(m => (
@@ -791,7 +1407,7 @@ export default function App() {
                   {isTyping && (
                     <div className="flex gap-3">
                       <div className="w-8 h-8 rounded-full bg-navy flex items-center justify-center text-sm text-white shrink-0">🤖</div>
-                      <div className="bg-white p-3 pr-6 rounded-2xl flex gap-1 shadow-sm">
+                      <div className="bg-white dark:bg-gray-800 p-3 pr-6 rounded-2xl flex gap-1 shadow-sm">
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing delay-75"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing delay-150"></div>
@@ -816,7 +1432,7 @@ export default function App() {
                           <button 
                             key={cat}
                             onClick={() => handleSendMessage(cat)}
-                            className="px-4 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
+                            className="px-4 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
                           >
                             {cat}
                           </button>
@@ -828,7 +1444,7 @@ export default function App() {
                           <button 
                             key={cat}
                             onClick={() => handleSendMessage(cat)}
-                            className="px-4 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
+                            className="px-4 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
                           >
                             {cat}
                           </button>
@@ -839,14 +1455,14 @@ export default function App() {
                         <button 
                           key={label}
                           onClick={() => handleSendMessage(lang === 'hi' ? (label === 'Emergency' ? 'आपातकाल' : label === 'Status Check' ? 'स्थिति' : 'शिकायत दर्ज करें') : label)}
-                          className="px-4 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
+                          className="px-4 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
                         >
                           {label}
                         </button>
                       ))
                     )}
                   </div>
-                  <div className="bg-white border-2 border-gray-100 rounded-2xl flex items-end p-2 focus-within:border-navy transition-all shadow-sm">
+                  <div className="glass-strong border-2 border-gray-100 dark:border-gray-800 rounded-2xl flex items-end p-2 focus-within:border-navy dark:focus-within:border-cta transition-all shadow-sm">
                     <div className="flex items-center gap-1">
                       <label 
                         className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all ${pendingComplaint.photoUrl ? 'bg-saffron/10 text-saffron' : 'text-gray-400 hover:text-saffron'}`}
@@ -864,7 +1480,7 @@ export default function App() {
                     <textarea 
                       ref={chatInputRef}
                       placeholder={lang === 'en' ? "Describe your problem..." : "अपनी समस्या बताएं..."}
-                      className="flex-1 border-none focus:ring-0 text-sm py-2 px-1 resize-none h-10 max-h-32"
+                      className="flex-1 border-none bg-transparent focus:ring-0 text-sm py-2 px-1 resize-none h-10 max-h-32 dark:text-white dark:placeholder-gray-500"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
@@ -880,7 +1496,7 @@ export default function App() {
                           chatInputRef.current.value = '';
                         }
                       }}
-                      className="w-10 h-10 bg-navy text-white rounded-full flex items-center justify-center hover:bg-saffron transition-all"
+                      className="btn-sheen w-10 h-10 bg-gradient-to-br from-navy to-cta dark:from-cta dark:to-saffron text-white rounded-full flex items-center justify-center hover:shadow-lg hover:-translate-y-0.5 transition-all shrink-0"
                     >
                       <Send size={16} />
                     </button>
@@ -899,32 +1515,32 @@ export default function App() {
               >
                 <div className="flex items-center justify-between shrink-0">
                   <div>
-                    <h2 className="font-display font-bold text-2xl">{lang === 'en' ? 'Officer Dashboard' : 'अधिकारी डैशबोर्ड'}</h2>
+                    <h2 className="font-display font-bold text-2xl dark:text-white">{lang === 'en' ? 'Officer Dashboard' : 'अधिकारी डैशबोर्ड'}</h2>
                     <p className="text-gray-400 text-sm mt-0.5">{lang === 'en' ? 'Track and manage citizen submissions' : 'प्रस्तुतियों को ट्रैक करें और प्रबंधित करें'}</p>
                   </div>
-                  
+
                   <div className="flex items-center gap-3">
-                    <div className="flex bg-white rounded-xl border border-gray-100 p-1 shadow-sm">
-                      <button 
+                    <div className="flex bg-white dark:bg-[#111827] rounded-xl border border-gray-100 dark:border-gray-800 p-1 shadow-sm">
+                      <button
                         onClick={() => setDashboardTab('overview')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'overview' ? 'bg-navy text-white' : 'text-gray-500 hover:text-navy'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'overview' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
                       >Overview</button>
-                      <button 
+                      <button
                         onClick={() => setDashboardTab('analytics')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'analytics' ? 'bg-navy text-white' : 'text-gray-500 hover:text-navy'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'analytics' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
                       >Analytics</button>
-                      <button 
+                      <button
                         onClick={() => setDashboardTab('workload')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'workload' ? 'bg-navy text-white' : 'text-gray-500 hover:text-navy'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'workload' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
                       >Workload</button>
-                      <button 
+                      <button
                         onClick={() => setDashboardTab('heatmap')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'heatmap' ? 'bg-navy text-white' : 'text-gray-500 hover:text-navy'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'heatmap' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
                       >Heatmap</button>
                     </div>
-                    <button 
+                    <button
                       onClick={exportToCSV}
-                      className="px-4 h-10 bg-white border border-gray-200 rounded-xl text-navy flex items-center gap-2 text-xs font-bold hover:border-navy transition-all shadow-sm"
+                      className="btn-sheen px-4 h-10 bg-white dark:bg-[#111827] border border-gray-200 dark:border-gray-700 rounded-xl text-navy dark:text-white flex items-center gap-2 text-xs font-bold hover:border-navy dark:hover:border-cta transition-all shadow-sm"
                     >
                       <Download size={14} /> Export CSV
                     </button>
@@ -940,28 +1556,28 @@ export default function App() {
                       <StatCard label="Resolved" value={stats.resolved} icon={<CheckCircle2 size={20} />} color="green" />
                     </div>
 
-                    <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
-                      <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <h3 className="font-bold text-sm tracking-wide shrink-0">COMPLAINT REGISTRY</h3>
-                        
+                    <div className="flex-1 bg-white dark:bg-[#111827] rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
+                      <div className="px-6 py-4 bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <h3 className="font-bold text-sm tracking-wide shrink-0 dark:text-white">COMPLAINT REGISTRY</h3>
+
                         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                           <div className="relative flex-1 sm:w-64">
                             <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
-                            <input 
-                              type="text" 
+                            <input
+                              type="text"
                               placeholder="Search complaints..."
                               value={searchQuery}
                               onChange={(e) => setSearchQuery(e.target.value)}
-                              className="w-full h-9 pl-9 pr-4 bg-white rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-navy focus:border-navy transition-all"
+                              className="w-full h-9 pl-9 pr-4 bg-white dark:bg-gray-800 dark:text-white rounded-lg border border-gray-200 dark:border-gray-700 text-xs focus:ring-1 focus:ring-navy focus:border-navy dark:focus:ring-cta dark:focus:border-cta transition-all"
                             />
                           </div>
-                          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                             {(['all', 'Pending', 'In Progress', 'Resolved'] as const).map(f => (
-                              <button 
+                              <button
                                 key={f}
                                 onClick={() => setDashboardFilter(f)}
                                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${
-                                  dashboardFilter === f ? 'bg-white text-navy shadow-sm' : 'text-gray-400 hover:text-navy'
+                                  dashboardFilter === f ? 'bg-white dark:bg-gray-700 text-navy dark:text-white shadow-sm' : 'text-gray-400 hover:text-navy dark:hover:text-white'
                                 }`}
                               >
                                 {f === 'all' ? 'All' : f}
@@ -970,11 +1586,11 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="overflow-auto flex-1">
                         <table className="w-full text-left">
                           <thead>
-                            <tr className="border-b border-gray-100 sticky top-0 bg-white z-10">
+                            <tr className="border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-[#111827] z-10">
                               <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">ID</th>
                               <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">Category</th>
                               <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">Description</th>
@@ -983,7 +1599,7 @@ export default function App() {
                               <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-50">
+                          <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
                             {filteredComplaints.length === 0 ? (
                               <tr>
                                 <td colSpan={6} className="px-6 py-12 text-center text-gray-400 text-sm">
@@ -992,9 +1608,9 @@ export default function App() {
                               </tr>
                             ) : (
                               filteredComplaints.map(c => (
-                                <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
-                                  <td className="px-6 py-4 font-mono text-xs font-bold text-navy">{c.id}</td>
-                                  <td className="px-6 py-4 text-xs font-medium">
+                                <tr key={c.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                                  <td className="px-6 py-4 font-mono text-xs font-bold text-navy dark:text-white">{c.id}</td>
+                                  <td className="px-6 py-4 text-xs font-medium dark:text-gray-300">
                                     <div className="flex flex-col gap-1">
                                       {c.category}
                                       <PriorityBadge priority={c.priority} />
@@ -1008,9 +1624,9 @@ export default function App() {
                                     <SLATimer deadline={c.deadline} status={c.status} />
                                   </td>
                                   <td className="px-6 py-4">
-                                    <button 
+                                    <button
                                       onClick={() => setSelectedComplaint(c)}
-                                      className="px-3 py-1.5 bg-navy text-white rounded-lg text-[10px] font-bold hover:bg-saffron transition-all"
+                                      className="btn-sheen px-3 py-1.5 bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white rounded-lg text-[10px] font-bold hover:shadow-md transition-all"
                                     >VIEW DETAILS</button>
                                   </td>
                                 </tr>
@@ -1026,7 +1642,7 @@ export default function App() {
                 {dashboardTab === 'analytics' && (
                   <div className="flex-1 flex flex-col gap-6 overflow-auto pr-2 pb-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+                      <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-4">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-saffron" size={20} />
                           <h3 className="font-display font-bold text-sm">Complaints by Category</h3>
@@ -1058,7 +1674,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+                      <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-4">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-navy" size={20} />
                           <h3 className="font-display font-bold text-sm">7-Day Volume Trend</h3>
@@ -1093,9 +1709,9 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
                       <div className="flex items-center justify-between mb-6">
-                        <h3 className="font-display font-bold text-sm">Resolution Performance</h3>
+                        <h3 className="font-display font-bold text-sm dark:text-white">Resolution Performance</h3>
                         <div className="flex items-center gap-4">
                           <div className="flex items-center gap-1.5">
                             <div className="w-2.5 h-2.5 rounded-full bg-navy"></div>
@@ -1127,7 +1743,7 @@ export default function App() {
                   <div className="flex-1 overflow-auto pr-2 pb-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {officerWorkload.map(off => (
-                        <div key={off.name} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-6 hover:shadow-md transition-all group">
+                        <TiltCard key={off.name} maxTilt={5} className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-6 hover:shadow-xl transition-shadow group">
                           <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-xl grayscale group-hover:grayscale-0 transition-all">👨‍💼</div>
                             <div>
@@ -1168,18 +1784,21 @@ export default function App() {
                              </div>
                           </div>
                           
-                          <button className="w-full py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-navy hover:bg-navy hover:text-white hover:border-navy transition-all">View Performance Report</button>
-                        </div>
+                          <button
+                            onClick={() => setSelectedOfficer(off)}
+                            className="w-full py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold text-navy dark:text-white hover:bg-navy hover:text-white hover:border-navy dark:hover:bg-cta dark:hover:border-cta transition-all"
+                          >View Performance Report</button>
+                        </TiltCard>
                       ))}
                     </div>
                   </div>
                 )}
 
                 {dashboardTab === 'heatmap' && (
-                  <div className="flex-1 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col p-4">
+                  <div className="flex-1 bg-white dark:bg-[#111827] rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col p-4">
                     <div className="flex items-center justify-between mb-4 px-2">
                        <div className="flex flex-col">
-                          <h3 className="font-display font-bold text-navy text-sm">Citizen Complaint Heatmap</h3>
+                          <h3 className="font-display font-bold text-navy dark:text-white text-sm">Citizen Complaint Heatmap</h3>
                           <p className="text-[10px] font-bold text-gray-400 uppercase">Interactive spatial density map</p>
                        </div>
                        <div className="flex gap-4">
@@ -1188,9 +1807,10 @@ export default function App() {
                           <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[10px] font-bold text-gray-500 uppercase">Normal</span></div>
                        </div>
                     </div>
-                    <div className="flex-1 rounded-2xl overflow-hidden border border-gray-100 relative z-10">
+                    <div className={`flex-1 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 relative z-10 shadow-inner map-premium ${isDarkMode ? 'map-dark' : ''}`}>
                       <MapContainer center={[28.6139, 77.2090] as any} zoom={13} style={{ height: '100%', width: '100%' }}>
                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        <MapController target={mapFlyTarget} zoom={15} />
                         {complaints.map(c => (
                           <CircleMarker 
                             key={c.id} 
@@ -1215,6 +1835,17 @@ export default function App() {
                           </CircleMarker>
                         ))}
                       </MapContainer>
+                      <button
+                        onClick={async () => {
+                          const coords = await getBrowserLocation();
+                          if (coords) { setUserCoords(coords); setMapFlyTarget(coords); showToast('Centered on your location'); }
+                          else showToast('Could not access your location');
+                        }}
+                        title="Locate me"
+                        className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-100 dark:border-gray-800 shadow-lg flex items-center justify-center text-navy dark:text-white hover:text-cta hover:-translate-y-0.5 transition-all"
+                      >
+                        <Locate size={16} />
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1286,34 +1917,41 @@ export default function App() {
                   <p className="text-gray-400 mt-2">{lang === 'en' ? 'Enter your ID for live status updates' : 'लाइव अपडेट के लिए अपनी ID दर्ज करें'}</p>
                 </div>
 
-                <div className="w-full relative flex gap-3">
-                  <input 
+                <form
+                  className="w-full relative flex gap-3"
+                  onSubmit={(e) => { e.preventDefault(); setTrackSearched(true); }}
+                >
+                  <input
                     type="text"
                     value={trackId}
-                    onChange={(e) => setTrackId(e.target.value.toUpperCase())}
+                    onChange={(e) => { setTrackId(e.target.value.toUpperCase()); setTrackSearched(false); }}
                     placeholder="e.g. CIV-20240501-001"
-                    className="flex-1 h-14 rounded-2xl border-2 border-gray-100 px-6 font-mono font-bold focus:ring-0 focus:border-navy transition-all"
+                    className="flex-1 h-14 rounded-2xl border-2 border-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-white px-6 font-mono font-bold focus:ring-0 focus:border-navy dark:focus:border-cta transition-all"
                   />
-                  <button className="px-8 h-14 bg-navy text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-saffron transition-all shadow-lg active:scale-95">
+                  <button
+                    type="submit"
+                    disabled={!trackId.trim()}
+                    className="btn-sheen px-8 h-14 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white rounded-2xl font-bold flex items-center gap-2 hover:-translate-y-0.5 transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:hover:translate-y-0"
+                  >
                     <Search size={20} /> {lang === 'en' ? 'Search' : 'खोजें'}
                   </button>
-                </div>
+                </form>
 
                 <div className="w-full grid grid-cols-2 gap-4">
                    {complaints.filter(c => c.id === trackId).map(c => (
                      <React.Fragment key={c.id}>
-                        <div className="col-span-2 p-6 bg-white rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-6">
+                        <div className="col-span-2 p-6 bg-white dark:bg-[#111827] rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-6">
                            <div className="flex justify-between items-start">
                               <div className="flex flex-col gap-1">
                                 <span className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Complaint Progress</span>
-                                <h3 className="font-display font-bold text-xl">{c.category}</h3>
+                                <h3 className="font-display font-bold text-xl dark:text-white">{c.category}</h3>
                               </div>
                               <StatusBadge status={c.status} />
                            </div>
 
                            <div className="relative pl-8 flex flex-col gap-8">
-                             <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-gray-100"></div>
-                             
+                             <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-gray-100 dark:bg-gray-800"></div>
+
                              <TimelineStep done={true} label="Submitted" date={c.date} desc="Issue was successfully logged." />
                              <TimelineStep done={true} label="Under Review" date="Active" desc={`Assigned to ${c.officer}`} />
                              <TimelineStep done={c.status !== 'Pending'} current={c.status === 'In Progress'} label="In Resolution" date="In Progress" desc="Government official is visiting the site." />
@@ -1322,6 +1960,15 @@ export default function App() {
                         </div>
                      </React.Fragment>
                    ))}
+                   {trackSearched && trackId.trim() && !complaints.some(c => c.id === trackId) && (
+                     <div className="col-span-2 p-8 bg-white dark:bg-[#111827] rounded-3xl border border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center gap-3 text-center">
+                       <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-500 flex items-center justify-center">
+                         <AlertTriangle size={22} />
+                       </div>
+                       <p className="font-bold text-navy dark:text-white">No complaint found</p>
+                       <p className="text-sm text-gray-400">Double-check the ID — it should look like CIV-20260430-001.</p>
+                     </div>
+                   )}
                 </div>
               </motion.div>
             )}
@@ -1329,7 +1976,7 @@ export default function App() {
         </main>
 
         {/* Right Sidebar - Info/Recent */}
-        <aside className="w-[300px] bg-white border-l border-gray-100 flex flex-col p-6 shrink-0 gap-8">
+        <aside className="w-[300px] glass border-l border-gray-100 dark:border-white/5 flex flex-col p-6 shrink-0 gap-8">
            <div className="flex flex-col gap-3">
              <div className="flex items-center gap-2 mb-1">
                <div className="w-2 h-2 rounded-full bg-saffron tracking-tight"></div>
@@ -1347,19 +1994,19 @@ export default function App() {
              </div>
              <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-3">
                {complaints.slice(0, 5).map(c => (
-                 <div 
-                   key={c.id} 
+                 <div
+                   key={c.id}
                    onClick={() => setSelectedComplaint(c)}
-                   className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-saffron transition-all cursor-pointer group"
+                   className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/5 hover:border-saffron dark:hover:border-saffron/50 transition-all cursor-pointer group"
                  >
                    <div className="flex justify-between items-center mb-1">
-                     <span className="font-mono text-[10px] font-bold text-navy">{c.id}</span>
-                     <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full ${c.status === 'Resolved' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                     <span className="font-mono text-[10px] font-bold text-navy dark:text-white">{c.id}</span>
+                     <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full ${c.status === 'Resolved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                        {c.status}
                      </span>
                    </div>
-                   <p className="text-[11px] text-gray-500 font-medium truncate group-hover:text-navy transition-colors">{c.description}</p>
-                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+                   <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate group-hover:text-navy dark:group-hover:text-white transition-colors">{c.description}</p>
+                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-white/10">
                      <span className="text-[9px] text-gray-400 flex items-center gap-1 font-bold"><MapPin size={10} /> {c.category}</span>
                      <span className="text-[9px] text-gray-400 font-bold italic">{c.date}</span>
                    </div>
@@ -1378,19 +2025,22 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white rounded-[32px] w-full max-w-xl shadow-2xl overflow-hidden"
+              className="glass-strong rounded-[32px] w-full max-w-xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
             >
-              <div className="p-8 bg-navy text-white flex justify-between items-center">
-                <div>
+              <div className="p-8 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white flex justify-between items-center relative overflow-hidden">
+                <div className="aurora-bg" aria-hidden="true">
+                  <div className="aurora-blob w-40 h-40 bg-white -top-10 -right-10" />
+                </div>
+                <div className="relative">
                   <h3 className="font-display font-bold text-2xl">Complaint Profile</h3>
                   <p className="text-white/60 text-sm mt-1">Reference ID: {selectedComplaint.id}</p>
                 </div>
-                <button 
+                <button
                   onClick={() => setSelectedComplaint(null)}
-                  className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all font-bold"
+                  className="relative w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all font-bold"
                 >✕</button>
               </div>
-              
+
               <div className="p-8 space-y-8">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <DetailField label="Current Status" value={<StatusBadge status={selectedComplaint.status} />} />
@@ -1401,25 +2051,25 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-4">
                    <DetailField label="AI Priority Score" value={<PriorityBadge priority={selectedComplaint.priority} />} />
-                   <DetailField label="User Sentiment" value={<span className="text-sm font-bold capitalize">{selectedComplaint.sentiment || 'Neutral'}</span>} />
+                   <DetailField label="User Sentiment" value={<span className="text-sm font-bold capitalize dark:text-white">{selectedComplaint.sentiment || 'Neutral'}</span>} />
                 </div>
-                
-                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+
+                <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-2xl border border-gray-100 dark:border-white/5">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Detailed Issue Description</span>
-                  <p className="text-sm text-gray-800 leading-relaxed italic">{selectedComplaint.description}</p>
+                  <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed italic">{selectedComplaint.description}</p>
                 </div>
 
                 <div className="space-y-4">
-                  <h4 className="text-xs font-black text-navy uppercase tracking-widest flex items-center gap-2">
+                  <h4 className="text-xs font-black text-navy dark:text-white uppercase tracking-widest flex items-center gap-2">
                     <Stars size={14} className="text-saffron" />
                     AI Suggested Responses
                   </h4>
                   <div className="grid grid-cols-1 gap-2">
                     {suggestedResponses.length > 0 ? suggestedResponses.map((tpl, i) => (
-                      <button 
+                      <button
                         key={i}
-                        onClick={() => showToast("Template copied to clipboard!")}
-                        className="p-3 text-left bg-white border border-gray-100 rounded-xl text-xs text-navy hover:border-saffron hover:bg-saffron/5 transition-all shadow-sm group relative"
+                        onClick={() => copyToClipboard(tpl)}
+                        className="p-3 text-left bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-xs text-navy dark:text-gray-200 hover:border-saffron hover:bg-saffron/5 transition-all shadow-sm group relative"
                       >
                         <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Download size={12} className="text-saffron" />
@@ -1427,7 +2077,7 @@ export default function App() {
                         {tpl}
                       </button>
                     )) : (
-                      <div className="flex gap-2 p-3 bg-gray-50 rounded-xl">
+                      <div className="flex gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse delay-75"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse delay-150"></div>
@@ -1436,16 +2086,16 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex gap-4 pt-4 border-t border-gray-100">
-                  <button 
+                <div className="flex gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                  <button
                     onClick={() => updateComplaintStatus(selectedComplaint.id, selectedComplaint.status === 'Pending' ? 'In Progress' : 'Resolved')}
-                    className="flex-1 h-12 bg-navy text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-saffron transition-all shadow-lg active:scale-95"
+                    className="btn-sheen flex-1 h-12 bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-lg transition-all active:scale-95"
                   >
                     Update Progress <ArrowRight size={18} />
                   </button>
-                  <button 
+                  <button
                     onClick={() => setSelectedComplaint(null)}
-                    className="px-8 h-12 bg-gray-100 text-gray-600 rounded-2xl font-bold border border-gray-200 hover:bg-white hover:border-navy transition-all"
+                    className="px-8 h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-2xl font-bold border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-700 hover:border-navy dark:hover:border-cta transition-all"
                   >Close</button>
                 </div>
               </div>
@@ -1467,6 +2117,9 @@ export default function App() {
           />
         )}
         {showOnboarding && <OnboardingTour onComplete={() => setShowOnboarding(false)} />}
+        {selectedOfficer && (
+          <OfficerReportModal officer={selectedOfficer} onClose={() => setSelectedOfficer(null)} />
+        )}
       </AnimatePresence>
 
       {/* Toast Notification */}
@@ -1476,9 +2129,9 @@ export default function App() {
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 50, opacity: 0 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 bg-navy text-white rounded-2xl shadow-xl flex items-center gap-3 border border-white/10"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 bg-gradient-to-r from-navy to-navy-light dark:from-[#111827] dark:to-[#1E293B] text-white rounded-2xl shadow-2xl glow-navy flex items-center gap-3 border border-white/10"
           >
-            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-xs">✓</div>
+            <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center text-xs shrink-0">✓</div>
             <span className="font-bold text-sm">{toast}</span>
           </motion.div>
         )}
@@ -1488,52 +2141,108 @@ export default function App() {
 }
 
 // Helper Components
+
+/** Mouse-tracking 3D tilt wrapper — gives cards a premium, physical depth feel. */
+function TiltCard({ children, className = '', maxTilt = 8 }: { children: React.ReactNode; className?: string; maxTilt?: number; key?: React.Key }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<React.CSSProperties>({});
+
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width;
+    const py = (e.clientY - rect.top) / rect.height;
+    const rotateY = (px - 0.5) * maxTilt * 2;
+    const rotateX = (0.5 - py) * maxTilt * 2;
+    el.style.setProperty('--mx', `${px * 100}%`);
+    el.style.setProperty('--my', `${py * 100}%`);
+    setStyle({ transform: `rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(0)` });
+  };
+
+  const handleLeave = () => setStyle({ transform: 'rotateX(0deg) rotateY(0deg) translateZ(0)' });
+
+  return (
+    <div className="tilt-wrap">
+      <div
+        ref={ref}
+        onMouseMove={handleMove}
+        onMouseLeave={handleLeave}
+        className={`tilt-card relative ${className}`}
+        style={style}
+      >
+        <div className="tilt-shine" aria-hidden="true" />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Imperative Leaflet controller — lets plain buttons drive the map (flyTo / recenter). */
+function MapController({ target, zoom = 16 }: { target: { lat: number; lng: number } | null; zoom?: number }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo([target.lat, target.lng], zoom, { duration: 1.1 });
+  }, [target, zoom, map]);
+  return null;
+}
+
+/** Switches tile provider based on theme — dark uses a CSS filter over OSM so no API key is needed. */
+function PremiumTileLayer({ dark }: { dark: boolean }) {
+  return (
+    <TileLayer
+      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      attribution={dark ? '&copy; OpenStreetMap contributors' : '&copy; OpenStreetMap contributors'}
+    />
+  );
+}
+
 function SidebarItem({ icon, label, active, badge, onClick }: any) {
   return (
-    <button 
+    <button
       onClick={onClick}
-      className={`flex items-center gap-3 px-5 py-3 mx-2 rounded-xl transition-all ${
-        active 
-          ? 'bg-navy text-white shadow-md' 
-          : 'text-gray-500 hover:bg-gray-100 hover:text-navy'
+      className={`btn-sheen flex items-center gap-3 px-5 py-3 mx-2 rounded-xl transition-all relative ${
+        active
+          ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-lg glow-navy'
+          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-navy dark:hover:text-white'
       }`}
     >
-      <span className={active ? 'text-saffron' : 'text-gray-400'}>{icon}</span>
+      <span className={active ? 'text-saffron-light' : 'text-gray-400'}>{icon}</span>
       <span className="text-[13px] font-bold flex-1 text-left">{label}</span>
-      {badge ? <span className="bg-saffron text-white text-[10px] font-black px-2 py-0.5 rounded-full">{badge}</span> : null}
+      {badge ? <span className="bg-gradient-to-br from-saffron to-saffron-bright text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">{badge}</span> : null}
     </button>
   );
 }
 
 function StatCard({ label, value, icon, color }: any) {
   const colors: any = {
-    navy: 'bg-navy-light/10 text-navy',
-    orange: 'bg-orange-50 text-orange-600',
-    saffron: 'bg-saffron-pale text-saffron',
-    green: 'bg-green-50 text-green-600'
+    navy: 'bg-gradient-to-br from-navy to-navy-light text-white shadow-lg shadow-navy/30',
+    orange: 'bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-lg shadow-orange-500/30',
+    saffron: 'bg-gradient-to-br from-saffron-light to-saffron-bright text-white shadow-lg shadow-saffron/30',
+    green: 'bg-gradient-to-br from-green-400 to-green-600 text-white shadow-lg shadow-green-500/30'
   };
   return (
-    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-1 hover:shadow-md transition-all">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${colors[color]}`}>{icon}</div>
+    <TiltCard maxTilt={6} className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-1 hover:shadow-xl transition-shadow">
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2 ${colors[color]}`} style={{ transform: 'translateZ(20px)' }}>{icon}</div>
       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</span>
-      <span className="text-3xl font-display font-bold leading-tight">{value}</span>
-    </div>
+      <span className="text-3xl font-display font-bold leading-tight dark:text-white" style={{ transform: 'translateZ(10px)' }}>{value}</span>
+    </TiltCard>
   );
 }
 
 function MiniStat({ color, label, value, icon }: any) {
   const colors: any = {
-    navy: 'bg-navy text-white',
-    saffron: 'bg-saffron text-white',
-    green: 'bg-green-600 text-white'
+    navy: 'bg-gradient-to-br from-navy to-navy-light text-white',
+    saffron: 'bg-gradient-to-br from-saffron-light to-saffron-bright text-white',
+    green: 'bg-gradient-to-br from-green-500 to-green-700 text-white'
   };
   return (
-    <div className="flex items-center justify-between bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
+    <div className="flex items-center justify-between bg-gray-50 dark:bg-white/5 p-2.5 rounded-2xl border border-gray-100 dark:border-white/5">
       <div className="flex items-center gap-3">
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${colors[color]}`}>{icon}</div>
-        <span className="text-[11px] font-bold text-gray-500">{label}</span>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-sm ${colors[color]}`}>{icon}</div>
+        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400">{label}</span>
       </div>
-      <span className="text-lg font-display font-bold text-navy">{value}</span>
+      <span className="text-lg font-display font-bold text-navy dark:text-white">{value}</span>
     </div>
   );
 }
@@ -1570,9 +2279,9 @@ function StatusBadge({ status }: { status: Complaint['status'] }) {
 
 function DetailField({ label, value }: any) {
   return (
-    <div className="p-4 bg-gray-50 rounded-xl flex flex-col gap-1">
+    <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-xl flex flex-col gap-1">
       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</span>
-      <div className="text-sm font-bold text-navy">{value}</div>
+      <div className="text-sm font-bold text-navy dark:text-white">{value}</div>
     </div>
   );
 }
@@ -1687,6 +2396,79 @@ function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
         >
           Submit Feedback
         </button>
+      </motion.div>
+    </div>
+  );
+}
+
+function OfficerReportModal({ officer, onClose }: { officer: { name: string; ward: string; count: number; solved: number; pending: number; rating: number }; onClose: () => void }) {
+  const efficiency = officer.count === 0 ? 0 : Math.round((officer.solved / officer.count) * 100);
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-navy/70 dark:bg-black/70 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        className="glass-strong rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden"
+      >
+        <div className="p-8 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white relative overflow-hidden">
+          <div className="aurora-bg" aria-hidden="true">
+            <div className="aurora-blob w-40 h-40 bg-white -top-10 -right-10" />
+          </div>
+          <div className="relative flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-2xl">👨‍💼</div>
+            <div>
+              <h3 className="font-display font-bold text-xl">{officer.name}</h3>
+              <p className="text-white/70 text-xs font-bold uppercase tracking-widest mt-0.5">{officer.ward}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-auto w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"
+            ><X size={16} /></button>
+          </div>
+        </div>
+
+        <div className="p-8 space-y-6">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-2xl flex flex-col gap-1 text-center">
+              <span className="text-[9px] font-bold text-gray-400 uppercase">Assigned</span>
+              <span className="text-2xl font-display font-bold text-navy dark:text-white">{officer.count}</span>
+            </div>
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-2xl flex flex-col gap-1 text-center">
+              <span className="text-[9px] font-bold text-green-500 uppercase">Solved</span>
+              <span className="text-2xl font-display font-bold text-green-600 dark:text-green-400">{officer.solved}</span>
+            </div>
+            <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex flex-col gap-1 text-center">
+              <span className="text-[9px] font-bold text-orange-400 uppercase">Pending</span>
+              <span className="text-2xl font-display font-bold text-orange-600 dark:text-orange-400">{officer.pending}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
+              <span className="flex items-center gap-1.5"><Gauge size={12} /> Efficiency Rate</span>
+              <span>{efficiency}%</span>
+            </div>
+            <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${efficiency}%` }}
+                transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
+                className="h-full bg-gradient-to-r from-navy to-cta dark:from-cta dark:to-saffron rounded-full"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-2xl">
+            <span className="text-xs font-bold text-gray-500 flex items-center gap-2"><Briefcase size={14} /> Citizen Rating</span>
+            <span className="text-sm font-bold text-yellow-600 dark:text-yellow-400 flex items-center gap-1">★ {officer.rating.toFixed(1)} / 5.0</span>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-full h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-2xl font-bold border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-700 hover:border-navy dark:hover:border-cta transition-all"
+          >Close</button>
+        </div>
       </motion.div>
     </div>
   );

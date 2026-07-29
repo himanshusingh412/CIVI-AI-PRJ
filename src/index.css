@@ -1,38 +1,91 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
-@theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Sora', sans-serif;
-  
-  --color-navy: #1A2B5E;
-  --color-navy-dark: #111d42;
-  --color-navy-light: #243474;
-  --color-saffron: #FF6B00;
-  --color-saffron-light: #ff8c35;
-  --color-saffron-pale: #fff4eb;
+/* Design system: "Accessible & Ethical" — WCAG AAA target for public-sector use.
+   Typography: Lexend (headings, tuned for reading proficiency) + Source Sans 3 (body). */
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
-  /* Dark Mode Overrides (used with .dark class) */
-  --color-bg-main: var(--color-gray-50);
-  --color-text-main: var(--color-navy);
+@theme {
+  --font-sans: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Lexend', ui-sans-serif, system-ui, sans-serif;
+
+  /* Core identity — darkened for contrast compliance */
+  --color-navy: #0F172A;          /* 16.9:1 on white */
+  --color-navy-dark: #020617;
+  --color-navy-light: #334155;    /* 9.7:1 on white */
+  --color-saffron: #C2410C;       /* 5.9:1 on white — accessible replacement for #FF6B00 */
+  --color-saffron-bright: #EA580C;/* decorative / large text only */
+  --color-saffron-light: #F97316;
+  --color-saffron-pale: #FFF7ED;
+  --color-cta: #0369A1;           /* 6.4:1 — primary action blue */
+  --color-cta-hover: #075985;
+
+  /* Semantic status — all ≥4.5:1 on their pale backgrounds */
+  --color-success: #15803D;
+  --color-success-pale: #F0FDF4;
+  --color-warning: #B45309;
+  --color-warning-pale: #FFFBEB;
+  --color-danger: #B91C1C;
+  --color-danger-pale: #FEF2F2;
+  --color-info: #0369A1;
+  --color-info-pale: #F0F9FF;
+
+  --color-bg-main: #F8FAFC;
+  --color-text-main: #020617;
+  --color-text-muted: #475569;    /* 7.5:1 — replaces gray-400 for real text */
+
+  /* z-index scale */
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-overlay: 30;
+  --z-modal: 50;
 }
 
 .dark {
-  --color-bg-main: #0a0f1d;
-  --color-text-main: #f8f9fc;
-  --color-navy: #f8f9fc;
-  --color-gray-50: #141b2d;
-  --color-gray-100: #1f2937;
-  --color-gray-200: #374151;
-  --color-gray-400: #9ca3af;
-  --color-gray-600: #d1d5db;
-  --color-white: #111827;
+  --color-bg-main: #020617;
+  --color-text-main: #F1F5F9;
+  --color-text-muted: #94A3B8;
+  --color-navy: #F1F5F9;
+  --color-saffron: #FB923C;       /* lightened for dark surfaces */
+  --color-cta: #38BDF8;
+  --color-gray-50: #0F172A;
+  --color-gray-100: #1E293B;
+  --color-gray-200: #334155;
+  --color-gray-400: #94A3B8;
+  --color-600: #CBD5E1;
+  --color-gray-600: #CBD5E1;
+  --color-white: #0F172A;
+  --color-success-pale: #052E16;
+  --color-danger-pale: #450A0A;
+  --color-info-pale: #082F49;
 }
 
 @layer base {
   body {
     @apply transition-colors duration-300;
   }
+
+  /* Readable body text: 16px minimum, 1.6 line-height */
+  html { font-size: 16px; }
+  p, li, label, input, textarea, button { line-height: 1.6; }
+  h1, h2, h3, h4 { line-height: 1.25; letter-spacing: -0.01em; }
+
+  /* Visible focus rings everywhere — keyboard navigation requirement */
+  :focus-visible {
+    outline: 3px solid var(--color-cta);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .dark :focus-visible { outline-color: #7DD3FC; }
+
+  /* Every interactive element gets a pointer + smooth transition */
+  button:not(:disabled), a, [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+    transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  button:disabled { cursor: not-allowed; }
 }
 
 body {
@@ -40,26 +93,206 @@ body {
   color: var(--color-text-main);
   @apply font-sans;
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 5px;
+/* Skip link — first tab stop for screen-reader / keyboard users */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1.25rem;
+  background: var(--color-navy);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 0 0 0.75rem 0;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+.skip-link:focus {
+  left: 0;
 }
+
+/* Minimum 44x44 touch targets on coarse pointers */
+@media (pointer: coarse) {
+  button, a[role="button"], [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #dde1ef;
+  background: #CBD5E1;
   border-radius: 99px;
 }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
 
 @keyframes typingBounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
   30% { transform: translateY(-5px); opacity: 1; }
 }
+.animate-typing { animation: typingBounce 1.2s infinite ease-in-out; }
 
-.animate-typing {
-  animation: typingBounce 1.2s infinite ease-in-out;
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #E2E8F0;
+}
+.dark .skeleton { background: #1E293B; }
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
+  animation: shimmer 1.6s infinite;
+}
+.dark .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
 }
 
+/* Respect the OS "reduce motion" setting — required for vestibular safety */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   PREMIUM LAYER — glass, glow, gradients, 3D depth
+   ══════════════════════════════════════════════════════════ */
+
+/* Glassmorphism surface */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.dark .glass {
+  background: rgba(17, 24, 39, 0.55);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+.dark .glass-strong {
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Ambient glow accents */
+.glow-saffron { box-shadow: 0 0 0 1px rgba(194,65,12,0.15), 0 8px 30px -8px rgba(194,65,12,0.45); }
+.glow-navy { box-shadow: 0 0 0 1px rgba(3,105,161,0.15), 0 8px 30px -8px rgba(3,105,161,0.45); }
+.dark .glow-saffron { box-shadow: 0 0 0 1px rgba(251,146,60,0.25), 0 8px 34px -6px rgba(251,146,60,0.5); }
+.dark .glow-navy { box-shadow: 0 0 0 1px rgba(56,189,248,0.25), 0 8px 34px -6px rgba(56,189,248,0.45); }
+
+/* Premium gradient text */
+.text-gradient-premium {
+  background: linear-gradient(135deg, #38BDF8 0%, #818CF8 45%, #FB923C 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Animated aurora background — decorative, GPU-cheap */
+.aurora-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora-blob {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(90px);
+  opacity: 0.35;
+  animation: auroraFloat 16s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes auroraFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(4%, 6%) scale(1.08); }
+  66% { transform: translate(-3%, -4%) scale(0.96); }
+}
+
+/* Premium button sheen sweep on hover */
+.btn-sheen { position: relative; overflow: hidden; isolation: isolate; }
+.btn-sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.35) 45%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+  pointer-events: none;
+}
+.btn-sheen:hover::after { transform: translateX(120%); }
+
+/* 3D tilt card perspective wrapper */
+.tilt-wrap { perspective: 1200px; }
+.tilt-card {
+  transform-style: preserve-3d;
+  transition: transform 0.12s ease-out, box-shadow 0.3s ease;
+  will-change: transform;
+}
+.tilt-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(600px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.16), transparent 45%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.tilt-card:hover .tilt-shine { opacity: 1; }
+
+/* Floating micro-interaction for hero/decorative icons */
+@keyframes floatY {
+  0%, 100% { transform: translateY(0px) rotateZ(0deg); }
+  50% { transform: translateY(-8px) rotateZ(2deg); }
+}
+.float-y { animation: floatY 5s ease-in-out infinite; }
+
+/* Dark, premium map tiles — filter trick avoids needing a separate tile server */
+.map-dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.85);
+}
+.map-dark .leaflet-container { background: #0b1120; }
+.map-premium .leaflet-control-zoom {
+  border: none !important;
+  border-radius: 14px !important;
+  overflow: hidden;
+  box-shadow: 0 8px 24px -4px rgba(0,0,0,0.35) !important;
+}
+.map-premium .leaflet-control-zoom a {
+  background: rgba(15, 23, 42, 0.85) !important;
+  color: #F8FAFC !important;
+  border: none !important;
+  backdrop-filter: blur(8px);
+}
+.map-premium .leaflet-control-zoom a:hover { background: #0369A1 !important; }
+.map-premium .leaflet-popup-content-wrapper {
+  border-radius: 16px;
+  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.35);
+}
+.map-premium .leaflet-popup-tip { box-shadow: 0 4px 10px -2px rgba(0,0,0,0.2); }
