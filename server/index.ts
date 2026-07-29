@@ -199,9 +199,15 @@ app.get('/api/health', (_req, res) =>
   }),
 );
 
-app.listen(PORT, () => {
-  const p = providerStatus();
-  console.log(`[server] CivicAI API on http://localhost:${PORT}`);
-  console.log(`[server] gemini=${p.gemini.configured ? p.gemini.model : 'off'} claude=${p.claude.configured ? p.claude.model : 'off'}`);
-  console.log(`[server] daily budget ${LIMITS.DAILY_REQUEST_BUDGET} · max ${LIMITS.MAX_CONCURRENT} concurrent · ${LIMITS.MAX_OUTPUT_TOKENS} output tokens`);
-});
+export { app };
+export default app;
+
+if (!process.env.VERCEL && !process.env.VERCEL_ENV) {
+  app.listen(PORT, () => {
+    const p = providerStatus();
+    console.log(`[server] CivicAI API on http://localhost:${PORT}`);
+    console.log(`[server] gemini=${p.gemini.configured ? p.gemini.model : 'off'} claude=${p.claude.configured ? p.claude.model : 'off'}`);
+    console.log(`[server] daily budget ${LIMITS.DAILY_REQUEST_BUDGET} · max ${LIMITS.MAX_CONCURRENT} concurrent · ${LIMITS.MAX_OUTPUT_TOKENS} output tokens`);
+  });
+}
+
