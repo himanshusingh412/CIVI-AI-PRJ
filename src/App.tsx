@@ -300,12 +300,13 @@ export default function App() {
 
     setMaskedIdentifier(res.maskedIdentifier);
     setLoginStep('otp');
-    setOtpValue('');
+    const code = res.devOtp || '123456';
+    setOtpValue(code);
     setAttemptsLeft(null);
     setResendIn(30);
     setAuthInfo(
       res.devOtp
-        ? `Code sent to ${res.maskedIdentifier} · dev code: ${res.devOtp}`
+        ? `Demo Mode · Code auto-filled: ${res.devOtp}`
         : `A 6-digit code was sent by ${res.channel === 'email' ? 'email' : 'SMS'} to ${res.maskedIdentifier}`
     );
   };

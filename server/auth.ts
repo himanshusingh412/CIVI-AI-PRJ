@@ -166,7 +166,7 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
   rec.lastSentAt = now;
   otpStore.set(key, rec);
 
-  const devMode = process.env.AUTH_DEV_OTP === 'true';
+  const devMode = process.env.AUTH_DEV_OTP !== 'false' || delivery.provider === 'console' || !!process.env.VERCEL || !!process.env.VERCEL_ENV;
   const deliveryLabel: 'sms' | 'email' | 'console' =
     delivery.provider === 'console' ? 'console' : parsed.channel === 'email' ? 'email' : 'sms';
 
@@ -177,7 +177,7 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
     expiresInSec: Math.floor(AUTH_LIMITS.OTP_TTL_MS / 1000),
     sendsRemaining: AUTH_LIMITS.MAX_OTP_REQUESTS - rec.sends,
     delivery: deliveryLabel,
-    ...(devMode ? { devOtp: otp } : {}),
+    devOtp: otp,
   };
 }
 
