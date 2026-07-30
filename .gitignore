@@ -18,3 +18,4 @@ preview-build/
 
 # Leftover scratch file from the audit (sandbox could not delete it).
 src/__eb_test.tsx
+.diag/

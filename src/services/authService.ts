@@ -58,6 +58,40 @@ const NETWORK_ERROR: AuthError = {
   message: 'Cannot reach the server. Check your connection and try again.',
 };
 
+const isDev = !!(import.meta as any).env?.DEV;
+
+/**
+ * The API server being down is by far the most common local failure, and it
+ * does NOT surface as a fetch rejection: Vite's dev proxy answers with an
+ * HTML 500/502 instead. Detect that (non-JSON body or a gateway status) and
+ * say so plainly rather than emitting a useless "Something went wrong".
+ */
+function backendDown(res: Response, parsedBody: unknown): boolean {
+  const gateway = res.status === 502 || res.status === 503 || res.status === 504;
+  const notJson = !res.headers.get('content-type')?.includes('application/json');
+  const emptyBody = !parsedBody || Object.keys(parsedBody as object).length === 0;
+  return gateway || (res.status >= 500 && (notJson || emptyBody));
+}
+
+const BACKEND_DOWN_MESSAGE = isDev
+  ? 'Can\'t reach the API server. Start it with "npm run dev:full" (or "npm run server" in a second terminal).'
+  : 'The service is temporarily unavailable. Please try again in a moment.';
+
+function toAuthError(res: Response, data: any): AuthError {
+  if (backendDown(res, data)) {
+    return { ok: false, error: 'backend_unavailable', message: BACKEND_DOWN_MESSAGE };
+  }
+  const retryHeader = Number(res.headers.get('Retry-After'));
+  return {
+    ok: false,
+    error: data?.error || 'request_failed',
+    // Never surface a raw status code or server text to the user.
+    message: data?.message || 'Something went wrong. Please try again.',
+    attemptsRemaining: data?.attemptsRemaining,
+    retryAfterSec: data?.retryAfterSec ?? (Number.isFinite(retryHeader) ? retryHeader : undefined),
+  };
+}
+
 /**
  * All mutating calls go through here so the CSRF header and credentials
  * are never accidentally omitted.
@@ -76,18 +110,7 @@ export async function apiPost<T>(path: string, body?: unknown, signal?: AbortSig
     });
 
     const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      const retryHeader = Number(res.headers.get('Retry-After'));
-      return {
-        ok: false,
-        error: data.error || 'request_failed',
-        // Never surface a raw status code or server text to the user.
-        message: data.message || 'Something went wrong. Please try again.',
-        attemptsRemaining: data.attemptsRemaining,
-        retryAfterSec: data.retryAfterSec ?? (Number.isFinite(retryHeader) ? retryHeader : undefined),
-      };
-    }
+    if (!res.ok) return toAuthError(res, data);
     return data as T;
   } catch (err) {
     if ((err as any)?.name === 'AbortError') throw err;
@@ -99,13 +122,7 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T |
   try {
     const res = await fetch(path, { credentials: 'same-origin', signal });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return {
-        ok: false,
-        error: data.error || 'request_failed',
-        message: data.message || 'Something went wrong. Please try again.',
-      };
-    }
+    if (!res.ok) return toAuthError(res, data);
     return data as T;
   } catch (err) {
     if ((err as any)?.name === 'AbortError') throw err;
