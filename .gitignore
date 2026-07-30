@@ -22,3 +22,7 @@ src/__eb_test.tsx
 .diag-ui.html
 .rbac*/
 .sa/
+.dbtest.mjs
+.rlstest.mjs
+.rlsneg.mjs
+.dbcheck.mjs
