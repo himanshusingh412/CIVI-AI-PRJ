@@ -308,6 +308,23 @@ app.post('/api/response-templates', requireAuth, aiLimiter, async (req, res) => 
   }
 });
 
+/**
+ * Public runtime configuration.
+ *
+ * The Google Client ID is public by design (it ships inside the page), but
+ * sourcing it from `VITE_GOOGLE_CLIENT_ID` bakes it in at build time — so
+ * changing it needs a rebuild, and a Vercel deploy needs the var present at
+ * build. Serving it at runtime instead means the server's .env is the single
+ * source of truth and the browser always sees the current value.
+ */
+app.get('/api/config', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    emailOtpEnabled: true,
+  });
+});
+
 // ───────────────────────── observability ─────────────────────────
 app.get('/api/health', (_req, res) =>
   res.json({

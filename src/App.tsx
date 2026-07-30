@@ -52,6 +52,7 @@ import { Complaint, ViewType, LangType, ChatMessage, SystemNotification } from '
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import { LoginScreen } from './components/LoginScreen';
+import { LoadingScreen } from './components/LoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Button } from './components/Button';
 import { sendChat, getBrowserLocation, type ChatTurn } from './services/chatService';
@@ -77,52 +78,20 @@ type OfficerStats = {
   rating: number;
 };
 
-/** Shown while the session is being restored, so protected UI never flashes. */
-function AppBootSplash() {
-  return (
-    <div
-      className="min-h-screen w-full grid place-items-center"
-      style={{ background: 'var(--color-bg-main)' }}
-      role="status"
-      aria-live="polite"
-    >
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl grid place-items-center text-white bg-gradient-to-br from-cta to-saffron shadow-lg">
-          <ShieldCheck size={24} aria-hidden="true" />
-        </div>
-        <span
-          aria-hidden="true"
-          className="w-5 h-5 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'var(--color-border-strong)', borderTopColor: 'var(--color-cta)' }}
-        />
-        <span className="text-sm font-semibold text-content-3">Restoring your session…</span>
-      </div>
-    </div>
-  );
-}
-
-// Fix Leaflet icons
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
 /** Must mirror LIMITS.MAX_HISTORY_MESSAGES in server/limits.ts. */
 const MAX_CHAT_HISTORY = 12;
 /** Guard against pathological paste — server clamps too, this is just UX. */
 const MAX_MESSAGE_CHARS = 2000;
 
 const SLA_LIMITS: Record<string, number> = {
-  '💧 Water Supply': 24 * 3600 * 1000, // 1 day
+  '💧 Water Supply': 24 * 3600 * 1000,      // 1 day
   '🛣️ Roads & Transport': 72 * 3600 * 1000, // 3 days
-  '⚡ Electricity': 12 * 3600 * 1000, // 12 hours
-  '🏥 Healthcare': 48 * 3600 * 1000, // 2 days
-  '🗑️ Sanitation': 48 * 3600 * 1000, // 2 days
-  '🚓 Law & Order': 6 * 3600 * 1000, // 6 hours
-  'General': 48 * 3600 * 1000,
-  'Default': 48 * 3600 * 1000
+  '⚡ Electricity': 12 * 3600 * 1000,        // 12 hours
+  '🏥 Healthcare': 48 * 3600 * 1000,         // 2 days
+  '🗑️ Sanitation': 48 * 3600 * 1000,        // 2 days
+  '🚓 Law & Order': 6 * 3600 * 1000,         // 6 hours
+  General: 48 * 3600 * 1000,
+  Default: 48 * 3600 * 1000,
 };
 
 const DEPARTMENTS: Record<string, string> = {
@@ -132,26 +101,16 @@ const DEPARTMENTS: Record<string, string> = {
   '🏥 Healthcare': 'Municipal Corporation',
   '🗑️ Sanitation': 'Sanitation Department',
   '🚓 Law & Order': 'Police Department',
-  'General': 'General Administration'
+  General: 'General Administration',
 };
 
+/** SLA clocks skip weekends — a Saturday deadline rolls to Monday. */
 const calculateSLADeadline = (category: string, startTime: number): number => {
   const baseSLA = SLA_LIMITS[category] || SLA_LIMITS.Default;
   let deadline = startTime + baseSLA;
-  
-  // Check if deadline falls on weekend (Sat=6, Sun=0)
-  const deadlineDate = new Date(deadline);
-  const day = deadlineDate.getDay();
-  
-  // If it ends on Saturday, add 48 hours (skip to Monday)
-  if (day === 6) {
-    deadline += 48 * 3600 * 1000;
-  }
-  // If it ends on Sunday, add 24 hours (skip to Monday)
-  else if (day === 0) {
-    deadline += 24 * 3600 * 1000;
-  }
-  
+  const day = new Date(deadline).getDay();
+  if (day === 6) deadline += 48 * 3600 * 1000;      // Sat → Mon
+  else if (day === 0) deadline += 24 * 3600 * 1000; // Sun → Mon
   return deadline;
 };
 
@@ -795,7 +754,7 @@ export default function App() {
     showToast("Exporting CSV...");
   };
 
-  if (status === 'loading') return <AppBootSplash />;
+  if (status === 'loading') return <LoadingScreen />;
 
   if (status !== 'authenticated') {
     return <LoginScreen onSignedIn={handleSignedIn} />;
@@ -894,7 +853,7 @@ export default function App() {
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-2 w-80 glass-strong rounded-3xl shadow-2xl bordered overflow-hidden z-[100]"
+                    className="absolute right-0 mt-2 w-80 glass-strong rounded-3xl elev-3 bordered overflow-hidden z-[100]"
                   >
                     <div
                       className="p-4 flex justify-between items-center surface-2"
@@ -1065,7 +1024,7 @@ export default function App() {
                 className="flex-1 flex flex-col gap-4 overflow-hidden"
               >
                 <div className="flex items-center gap-4 pb-4 border-b border-[var(--color-border)]">
-                  <div className="w-12 h-12 bg-cta rounded-2xl flex items-center justify-center text-2xl shadow-md">🤖</div>
+                  <div className="w-12 h-12 bg-cta rounded-2xl flex items-center justify-center text-2xl elev-2">🤖</div>
                   <div className="flex-1">
                     <h2 className="font-display font-bold text-lg">{lang === 'en' ? 'CivicAI Assistant' : 'CivicAI सहायक'}</h2>
                     <div className="flex items-center gap-1.5 text-xs text-content-3">
@@ -1186,7 +1145,7 @@ export default function App() {
                         {m.type === 'bot' ? '🤖' : 'RC'}
                       </div>
                       <div className="flex flex-col max-w-[75%]">
-                        <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line relative overflow-hidden ${
+                        <div className={`p-4 rounded-2xl text-sm leading-relaxed elev-1 whitespace-pre-line relative overflow-hidden ${
                           m.type === 'bot' 
                             ? 'surface  text-content  border-b-4 border-[var(--color-border)] ' 
                             : 'bg-cta dark:bg-saffron text-white rounded-tr-none'
@@ -1203,7 +1162,7 @@ export default function App() {
                   {isTyping && (
                     <div className="flex gap-3">
                       <div className="w-8 h-8 rounded-full bg-cta flex items-center justify-center text-sm text-white shrink-0">🤖</div>
-                      <div className="surface p-3 pr-6 rounded-2xl flex gap-1 shadow-sm">
+                      <div className="surface p-3 pr-6 rounded-2xl flex gap-1 elev-1">
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing delay-75"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing delay-150"></div>
@@ -1260,7 +1219,7 @@ export default function App() {
                   </div>
                   <form
                     onSubmit={e => { e.preventDefault(); handleSendMessage(chatInput); }}
-                    className="glass-strong bordered border-2 rounded-2xl flex items-end p-2 focus-within:border-cta transition-colors shadow-sm"
+                    className="glass-strong bordered border-2 rounded-2xl flex items-end p-2 focus-within:border-cta transition-colors elev-1"
                   >
                     <div className="flex items-center gap-1">
                       <label
@@ -1340,7 +1299,7 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="flex surface rounded-xl border border-[var(--color-border)] p-1 shadow-sm">
+                    <div className="flex surface rounded-xl border border-[var(--color-border)] p-1 elev-1">
                       <button
                         onClick={() => setDashboardTab('overview')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'overview' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
@@ -1360,7 +1319,7 @@ export default function App() {
                     </div>
                     <button
                       onClick={exportToCSV}
-                      className="btn-sheen px-4 h-10 surface border border-[var(--color-border-strong)] rounded-xl text-content flex items-center gap-2 text-xs font-bold hover:border-cta dark:hover:border-cta transition-all shadow-sm"
+                      className="btn-sheen px-4 h-10 surface border border-[var(--color-border-strong)] rounded-xl text-content flex items-center gap-2 text-xs font-bold hover:border-cta dark:hover:border-cta transition-all elev-1"
                     >
                       <Download size={14} /> Export CSV
                     </button>
@@ -1376,7 +1335,7 @@ export default function App() {
                       <StatCard label="Resolved" value={stats.resolved} icon={<CheckCircle2 size={20} />} color="green" />
                     </div>
 
-                    <div className="flex-1 surface rounded-2xl border border-[var(--color-border)] shadow-sm overflow-hidden flex flex-col">
+                    <div className="flex-1 surface rounded-2xl border border-[var(--color-border)] elev-1 overflow-hidden flex flex-col">
                       <div className="px-6 py-4 surface-2 border-b border-[var(--color-border)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <h3 className="font-bold text-sm tracking-wide shrink-0">COMPLAINT REGISTRY</h3>
 
@@ -1462,7 +1421,7 @@ export default function App() {
                 {dashboardTab === 'analytics' && (
                   <div className="flex-1 flex flex-col gap-6 overflow-auto pr-2 pb-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="surface p-6 rounded-2xl border border-[var(--color-border)] shadow-sm flex flex-col gap-4">
+                      <div className="surface p-6 rounded-2xl border border-[var(--color-border)] elev-1 flex flex-col gap-4">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-saffron" size={20} />
                           <h3 className="font-display font-bold text-sm">Complaints by Category</h3>
@@ -1494,7 +1453,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="surface p-6 rounded-2xl border border-[var(--color-border)] shadow-sm flex flex-col gap-4">
+                      <div className="surface p-6 rounded-2xl border border-[var(--color-border)] elev-1 flex flex-col gap-4">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-content" size={20} />
                           <h3 className="font-display font-bold text-sm">7-Day Volume Trend</h3>
@@ -1529,7 +1488,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="surface p-6 rounded-2xl border border-[var(--color-border)] shadow-sm">
+                    <div className="surface p-6 rounded-2xl border border-[var(--color-border)] elev-1">
                       <div className="flex items-center justify-between mb-6">
                         <h3 className="font-display font-bold text-sm">Resolution Performance</h3>
                         <div className="flex items-center gap-4">
@@ -1563,7 +1522,7 @@ export default function App() {
                   <div className="flex-1 overflow-auto pr-2 pb-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {officerWorkload.map(off => (
-                        <TiltCard key={off.name} maxTilt={5} className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm flex flex-col gap-6 hover:shadow-xl transition-shadow group">
+                        <TiltCard key={off.name} maxTilt={5} className="surface p-6 rounded-3xl bordered elev-2 flex flex-col gap-6 transition-shadow hover:elev-3 group">
                           <div className="flex items-center gap-4">
                             <div className="w-12 h-12 surface-2 rounded-2xl flex items-center justify-center text-xl grayscale group-hover:grayscale-0 transition-all">👨‍💼</div>
                             <div>
@@ -1615,7 +1574,7 @@ export default function App() {
                 )}
 
                 {dashboardTab === 'heatmap' && (
-                  <div className="flex-1 surface rounded-3xl border border-[var(--color-border)] shadow-sm overflow-hidden flex flex-col p-4">
+                  <div className="flex-1 surface rounded-3xl border border-[var(--color-border)] elev-1 overflow-hidden flex flex-col p-4">
                     <div className="flex items-center justify-between mb-4 px-2">
                        <div className="flex flex-col">
                           <h3 className="font-display font-bold text-content text-sm">Citizen Complaint Heatmap</h3>
@@ -1686,15 +1645,15 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm">
+                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
                       <div className="text-[10px] font-black text-content-3 uppercase mb-2">Resolved This Week</div>
                       <div className="text-4xl font-display font-bold text-green-500">{stats.resolved + 12}</div>
                     </div>
-                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm">
+                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
                       <div className="text-[10px] font-black text-content-3 uppercase mb-2">Avg. Resolution Speed</div>
                       <div className="text-4xl font-display font-bold text-blue-500">22.4h</div>
                     </div>
-                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm">
+                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
                       <div className="text-[10px] font-black text-content-3 uppercase mb-2">Public Trust Score</div>
                       <div className="text-4xl font-display font-bold text-saffron">98.2%</div>
                     </div>
@@ -1702,7 +1661,7 @@ export default function App() {
 
                   <div className="space-y-4">
                     {complaints.filter(c => c.status === 'Resolved' || c.status === 'In Progress').map(c => (
-                      <div key={c.id} className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-md flex gap-6 items-start">
+                      <div key={c.id} className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-2 flex gap-6 items-start">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${c.status === 'Resolved' ? 'bg-green-50 text-green-500' : 'bg-blue-50 text-blue-500'}`}>
                           {c.status === 'Resolved' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
                         </div>
@@ -1760,7 +1719,7 @@ export default function App() {
                 <div className="w-full grid grid-cols-2 gap-4">
                    {complaints.filter(c => c.id === trackId).map(c => (
                      <React.Fragment key={c.id}>
-                        <div className="col-span-2 p-6 surface rounded-3xl border border-[var(--color-border)] shadow-sm flex flex-col gap-6">
+                        <div className="col-span-2 p-6 surface rounded-3xl border border-[var(--color-border)] elev-1 flex flex-col gap-6">
                            <div className="flex justify-between items-start">
                               <div className="flex flex-col gap-1">
                                 <span className="text-[10px] font-bold text-content-3 tracking-widest uppercase">Complaint Progress</span>
@@ -1849,7 +1808,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="glass-strong rounded-[32px] w-full max-w-xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
+              className="glass-strong rounded-[32px] w-full max-w-xl elev-3 overflow-hidden max-h-[90vh] overflow-y-auto"
             >
               <div className="p-8 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white flex justify-between items-center relative overflow-hidden">
                 <div className="aurora-bg" aria-hidden="true">
@@ -1893,7 +1852,7 @@ export default function App() {
                       <button
                         key={i}
                         onClick={() => copyToClipboard(tpl)}
-                        className="p-3 text-left surface border border-[var(--color-border)] rounded-xl text-xs text-content hover:border-saffron hover:bg-saffron/5 transition-all shadow-sm group relative"
+                        className="p-3 text-left surface border border-[var(--color-border)] rounded-xl text-xs text-content hover:border-saffron hover:bg-saffron/5 transition-all elev-1 group relative"
                       >
                         <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Download size={12} className="text-saffron" />
@@ -1953,7 +1912,7 @@ export default function App() {
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 50, opacity: 0 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 bg-gradient-to-r from-navy to-navy-light dark:from-[#111827] dark:to-[#1E293B] text-white rounded-2xl shadow-2xl glow-navy flex items-center gap-3 border border-white/10"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 bg-gradient-to-r from-navy to-navy-light dark:from-[#111827] dark:to-[#1E293B] text-white rounded-2xl elev-3 glow-navy flex items-center gap-3 border border-white/10"
           >
             <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center text-xs shrink-0">✓</div>
             <span className="font-bold text-sm">{toast}</span>
@@ -2023,7 +1982,7 @@ function SidebarItem({ icon, label, active, badge, onClick }: any) {
     >
       <span className={active ? 'text-saffron-light' : 'text-content-3'}>{icon}</span>
       <span className="text-[13px] font-bold flex-1 text-left">{label}</span>
-      {badge ? <span className="bg-gradient-to-br from-saffron to-saffron-bright text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">{badge}</span> : null}
+      {badge ? <span className="bg-gradient-to-br from-saffron to-saffron-bright text-white text-[10px] font-black px-2 py-0.5 rounded-full elev-1">{badge}</span> : null}
     </button>
   );
 }
@@ -2036,7 +1995,7 @@ function StatCard({ label, value, icon, color }: any) {
     green: 'bg-gradient-to-br from-green-400 to-green-600 text-white shadow-lg shadow-green-500/30'
   };
   return (
-    <TiltCard maxTilt={6} className="surface p-5 rounded-2xl border border-[var(--color-border)] shadow-sm flex flex-col gap-1 hover:shadow-xl transition-shadow">
+    <TiltCard maxTilt={6} className="surface p-5 rounded-2xl bordered elev-2 flex flex-col gap-1 transition-shadow hover:elev-3">
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2 ${colors[color]}`} style={{ transform: 'translateZ(20px)' }}>{icon}</div>
       <span className="text-[10px] font-bold text-content-3 uppercase tracking-wider">{label}</span>
       <span className="text-3xl font-display font-bold leading-tight" style={{ transform: 'translateZ(10px)' }}>{value}</span>
@@ -2053,7 +2012,7 @@ function MiniStat({ color, label, value, icon }: any) {
   return (
     <div className="flex items-center justify-between surface-2 p-2.5 rounded-2xl border border-[var(--color-border)]">
       <div className="flex items-center gap-3">
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-sm ${colors[color]}`}>{icon}</div>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center elev-1 ${colors[color]}`}>{icon}</div>
         <span className="text-[11px] font-bold text-content-2">{label}</span>
       </div>
       <span className="text-lg font-display font-bold text-content">{value}</span>
@@ -2146,7 +2105,7 @@ function SLATimer({ deadline, status }: { deadline: number, status: string }) {
 function TimelineStep({ done, current, label, date, desc }: any) {
   return (
     <div className="relative">
-      <div className={`absolute -left-[30px] top-1 w-4 h-4 rounded-full border-4 border-white shadow-md z-10 transition-all ${
+      <div className={`absolute -left-[30px] top-1 w-4 h-4 rounded-full border-4 border-white elev-2 z-10 transition-all ${
         done ? 'bg-cta dark:bg-green-500 scale-110' : current ? 'bg-saffron animate-pulse scale-125' : 'bg-gray-200 '
       }`}></div>
       <div className="flex flex-col gap-0.5">
@@ -2170,7 +2129,7 @@ function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="surface rounded-[32px] w-full max-w-sm p-8 shadow-2xl relative"
+        className="surface rounded-[32px] w-full max-w-sm p-8 elev-3 relative"
       >
         <div className="text-center">
           <div className="w-20 h-20 bg-green-50 text-green-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
@@ -2223,7 +2182,7 @@ function OfficerReportModal({ officer, onClose }: { officer: { name: string; war
         initial={{ opacity: 0, scale: 0.9, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9 }}
-        className="glass-strong rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden"
+        className="glass-strong rounded-[32px] w-full max-w-md elev-3 overflow-hidden"
       >
         <div className="p-8 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white relative overflow-hidden">
           <div className="aurora-bg" aria-hidden="true">
@@ -2302,7 +2261,7 @@ function OnboardingTour({ onComplete }: { onComplete: () => void }) {
         key={step}
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
-        className="surface rounded-[32px] w-full max-w-sm p-8 shadow-2xl overflow-hidden relative"
+        className="surface rounded-[32px] w-full max-w-sm p-8 elev-3 overflow-hidden relative"
       >
         <div className="flex justify-between items-center mb-8">
           <div className="flex gap-1">

@@ -9,8 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "server": "tsx server/index.ts",
-    "dev:full": "tsx server/index.ts & vite --port=3000"
+    "server": "tsx watch server/index.ts",
+    "dev:full": "node scripts/dev.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.4.0",

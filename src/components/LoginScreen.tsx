@@ -12,12 +12,20 @@ import {
   type AuthUser,
 } from '../services/authService';
 
-const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ?? '';
+/**
+ * Build-time fallback. The authoritative value comes from GET /api/config at
+ * runtime, so rotating the client ID never requires a rebuild — and a
+ * production deploy doesn't need the var present at build time.
+ */
+const BUILD_TIME_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ?? '';
 
 type Step = 'identify' | 'otp';
 
 export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void }) {
   const { isDark } = useTheme();
+
+  const [googleClientId, setGoogleClientId] = useState<string>(BUILD_TIME_CLIENT_ID);
+  const [configLoading, setConfigLoading] = useState(!BUILD_TIME_CLIENT_ID);
 
   const [step, setStep] = useState<Step>('identify');
   const [email, setEmail] = useState('');
@@ -42,6 +50,28 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
+  }, []);
+
+  // Pull the live client ID from the server; ignore failures and keep the
+  // build-time fallback so the email path always stays usable.
+  useEffect(() => {
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch('/api/config', { credentials: 'same-origin', signal: ac.signal });
+        if (!res.ok) return;
+        const cfg = await res.json();
+        if (!mounted.current) return;
+        if (typeof cfg?.googleClientId === 'string' && cfg.googleClientId) {
+          setGoogleClientId(cfg.googleClientId);
+        }
+      } catch {
+        /* offline or backend down — fallback already in place */
+      } finally {
+        if (mounted.current) setConfigLoading(false);
+      }
+    })();
+    return () => ac.abort();
   }, []);
 
   // ── countdown tickers ──
@@ -98,7 +128,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
   );
 
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID || step !== 'identify') return;
+    if (!googleClientId || step !== 'identify') return;
 
     let cancelled = false;
     let timer: number | undefined;
@@ -112,7 +142,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
       }
       try {
         g.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
+          client_id: googleClientId,
           callback: handleGoogleCredential,
           auto_select: false,
           cancel_on_tap_outside: true,
@@ -138,7 +168,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [step, isDark, handleGoogleCredential]);
+  }, [step, isDark, googleClientId, handleGoogleCredential]);
 
   // ── email OTP ──
   const emailValid = validateEmail(email).ok;
@@ -274,12 +304,12 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
         {step === 'identify' ? (
           <>
             {/* Primary: Google */}
-            {GOOGLE_CLIENT_ID ? (
+            {configLoading ? (
+              <div className="h-11 rounded-full skeleton mb-1" role="status" aria-label="Loading sign-in options" />
+            ) : googleClientId ? (
               <div className="mb-1">
                 <div ref={googleBtnRef} className="flex justify-center min-h-[44px]" aria-busy={googleBusy || undefined} />
-                {!googleReady && (
-                  <div className="h-11 rounded-full skeleton" aria-hidden="true" />
-                )}
+                {!googleReady && <div className="h-11 rounded-full skeleton" aria-hidden="true" />}
                 {googleBusy && (
                   <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in…</p>
                 )}
@@ -289,8 +319,9 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
                 className="rounded-xl p-3.5 mb-1 text-[13px]"
                 style={{ background: 'var(--color-info-pale)', color: 'var(--color-info)', border: '1px solid var(--color-info)' }}
               >
-                Google sign-in isn't configured yet. Add <code className="font-mono">VITE_GOOGLE_CLIENT_ID</code> to
-                your <code className="font-mono">.env</code> to enable it. You can still sign in with an email code below.
+                Google sign-in isn't available right now. Set <code className="font-mono">GOOGLE_CLIENT_ID</code> in
+                the server's <code className="font-mono">.env</code> and restart it. You can still sign in with an
+                email code below.
               </div>
             )}
 

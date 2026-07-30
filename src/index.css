@@ -320,6 +320,32 @@ input:-webkit-autofill:focus {
   66% { transform: translate(-3%, -4%) scale(0.96); }
 }
 
+/* ── Elevation scale ───────────────────────────────────────────
+   One consistent ladder instead of ad-hoc shadow-lg/xl/2xl. Dark
+   mode needs deeper, tighter shadows because ambient light is low. */
+.elev-1 { box-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.10); }
+.elev-2 { box-shadow: 0 2px 4px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.08); }
+.elev-3 { box-shadow: 0 4px 8px rgb(15 23 42 / 0.07), 0 12px 28px rgb(15 23 42 / 0.12); }
+.dark .elev-1 { box-shadow: 0 1px 2px rgb(0 0 0 / 0.5); }
+.dark .elev-2 { box-shadow: 0 4px 14px rgb(0 0 0 / 0.55); }
+.dark .elev-3 { box-shadow: 0 12px 34px rgb(0 0 0 / 0.62); }
+
+/* Cards lift on hover, settle on press. Transform-only so no reflow.
+   Hover lift is skipped on touch devices, which have no hover state. */
+.lift {
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (hover: hover) {
+  .lift:hover { transform: translateY(-2px); }
+}
+.lift:active { transform: translateY(0) scale(0.995); }
+
+/* Kill the 300ms mobile tap delay on every interactive element. */
+button, a, [role="button"], label, input, select, textarea {
+  touch-action: manipulation;
+}
+
 /* Premium button sheen sweep on hover */
 .btn-sheen { position: relative; overflow: hidden; isolation: isolate; }
 .btn-sheen::after {
@@ -351,6 +377,130 @@ input:-webkit-autofill:focus {
   pointer-events: none;
 }
 .tilt-card:hover .tilt-shine { opacity: 1; }
+
+/* ══════════════════════════════════════════════════════════
+   3D LOADING SCENE
+   Only transform/opacity animate (never width/height/top/left),
+   so the whole scene stays on the compositor at 60fps.
+   ══════════════════════════════════════════════════════════ */
+
+.scene-3d {
+  perspective: 900px;
+  perspective-origin: 50% 45%;
+}
+
+.cube-3d {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  transform-style: preserve-3d;
+  animation: cubeSpin 9s linear infinite;
+  will-change: transform;
+}
+
+@keyframes cubeSpin {
+  from { transform: rotateX(-22deg) rotateY(0deg); }
+  to   { transform: rotateX(-22deg) rotateY(360deg); }
+}
+
+.cube-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-cta) 88%, transparent),
+    color-mix(in srgb, var(--color-saffron) 78%, transparent));
+  border: 1px solid rgb(255 255 255 / 0.28);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35);
+  color: #fff;
+  backface-visibility: visible;
+}
+
+/* Each face pushed out to half the cube's width (44px). */
+.cube-face.front  { transform: translateZ(44px); }
+.cube-face.back   { transform: rotateY(180deg) translateZ(44px); }
+.cube-face.right  { transform: rotateY(90deg)  translateZ(44px); }
+.cube-face.left   { transform: rotateY(-90deg) translateZ(44px); }
+.cube-face.top    { transform: rotateX(90deg)  translateZ(44px); }
+.cube-face.bottom { transform: rotateX(-90deg) translateZ(44px); }
+
+/* Contact shadow — sells the object as sitting in space. */
+.cube-shadow {
+  width: 96px;
+  height: 14px;
+  margin: 30px auto 0;
+  border-radius: 999px;
+  background: radial-gradient(ellipse at center, rgb(0 0 0 / 0.42), transparent 70%);
+  filter: blur(6px);
+  animation: shadowPulse 9s ease-in-out infinite;
+}
+@keyframes shadowPulse {
+  0%, 100% { transform: scaleX(1); opacity: 0.55; }
+  50%      { transform: scaleX(0.78); opacity: 0.32; }
+}
+
+/* Orbiting ring, tilted into the same 3D plane as the cube. */
+.orbit-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 190px;
+  height: 190px;
+  margin: -95px 0 0 -95px;
+  border-radius: 50%;
+  border: 1.5px dashed color-mix(in srgb, var(--color-cta) 45%, transparent);
+  transform: rotateX(74deg);
+  animation: ringSpin 14s linear infinite;
+}
+.orbit-ring.slow {
+  width: 250px; height: 250px; margin: -125px 0 0 -125px;
+  border-color: color-mix(in srgb, var(--color-saffron) 35%, transparent);
+  animation-duration: 22s;
+  animation-direction: reverse;
+}
+@keyframes ringSpin {
+  from { transform: rotateX(74deg) rotateZ(0deg); }
+  to   { transform: rotateX(74deg) rotateZ(360deg); }
+}
+
+/* Indeterminate progress bar — translate only, no width animation. */
+.progress-track {
+  position: relative;
+  width: 190px;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--color-surface-3);
+}
+.progress-track::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--color-cta), var(--color-saffron), transparent);
+  transform: translateX(-100%);
+  animation: progressSweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes progressSweep {
+  to { transform: translateX(100%); }
+}
+
+/* Staggered fade-up for loading copy (30–50ms apart per the motion rules). */
+.fade-up { animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Vestibular safety: freeze the scene at a readable angle rather than
+   just speeding it up, so it reads as a deliberate static illustration. */
+@media (prefers-reduced-motion: reduce) {
+  .cube-3d { animation: none !important; transform: rotateX(-22deg) rotateY(-38deg); }
+  .orbit-ring, .cube-shadow, .progress-track::after, .fade-up { animation: none !important; }
+  .progress-track::after { transform: none; opacity: 0.85; }
+}
 
 /* Floating micro-interaction for hero/decorative icons */
 @keyframes floatY {
