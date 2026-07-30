@@ -93,8 +93,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-busy={isLoading || undefined}
       aria-disabled={isDisabled || undefined}
       className={[
-        'inline-flex items-center justify-center font-semibold',
-        'transition-all duration-200 active:scale-[0.98]',
+        'inline-flex items-center justify-center font-semibold relative overflow-hidden',
+        // Spring-ish press: scales down fast, releases with overshoot.
+        'transition-[transform,background-color,border-color,box-shadow,opacity]',
+        'duration-[160ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+        'active:scale-[0.97]',
         'disabled:cursor-not-allowed disabled:active:scale-100',
         VARIANTS[variant],
         SIZES[size],

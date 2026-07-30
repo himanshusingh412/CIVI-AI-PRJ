@@ -52,6 +52,14 @@
   --color-content-3: #4E5A6B;
   --color-overlay: rgb(15 23 42 / 0.6);
 
+  /* Priority scale — read from JS for Leaflet markers, which render to
+     canvas/SVG and can't resolve CSS variables themselves. */
+  --color-priority-critical: #B91C1C;
+  --color-priority-high: #C2410C;
+  --color-priority-medium: #B45309;
+  --color-priority-low: #15803D;
+  --color-marker-user: #0369A1;
+
   /* Chart palette — referenced from JS via getComputedStyle */
   --color-chart-1: #0369A1;
   --color-chart-2: #C2410C;
@@ -158,6 +166,14 @@
   --color-chart-5: #FBBF24;
   --color-chart-grid: #1E293B;
   --color-chart-axis: #94A3B8;
+
+  /* Priority colors brighten on dark so markers stay legible on the
+     inverted map tiles. */
+  --color-priority-critical: #F87171;
+  --color-priority-high: #FB923C;
+  --color-priority-medium: #FBBF24;
+  --color-priority-low: #4ADE80;
+  --color-marker-user: #38BDF8;
 
   /* Dark surfaces need deeper, tighter shadows — the light-mode
      values read as grey haze instead of elevation. */

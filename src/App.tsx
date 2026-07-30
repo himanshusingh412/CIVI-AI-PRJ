@@ -54,6 +54,9 @@ import { useTheme } from './context/ThemeContext';
 import { LoginScreen } from './components/LoginScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Button } from './components/Button';
+import { Skeleton, SkeletonRegion } from './components/Skeleton';
+import { MobileNav } from './components/MobileNav';
+import { useThemeTokens } from './hooks/useThemeTokens';
 import { sendChat, getBrowserLocation, type ChatTurn } from './services/chatService';
 import { OFFICERS, RESPONSES } from './constants';
 import { analyzeComplaint, generateResponseTemplates } from './services/aiService';
@@ -270,26 +273,7 @@ export default function App() {
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
-  /**
-   * Recharts renders to SVG and cannot read CSS classes, so chart colors must
-   * be passed as real values. Deriving them from the theme tokens keeps the
-   * charts readable in dark mode instead of near-invisible hardcoded greys.
-   */
-  const chart = useMemo(() => {
-    const palette = isDarkMode
-      ? { series: ['#38BDF8', '#FB923C', '#4ADE80', '#A78BFA', '#FBBF24'], grid: '#1E293B', axis: '#94A3B8', surface: '#111827', content: '#F1F5F9' }
-      : { series: ['#0369A1', '#C2410C', '#15803D', '#7C3AED', '#B45309'], grid: '#E2E8F0', axis: '#64748B', surface: '#FFFFFF', content: '#0F172A' };
-    return {
-      ...palette,
-      tooltip: {
-        borderRadius: '12px',
-        border: `1px solid ${palette.grid}`,
-        background: palette.surface,
-        color: palette.content,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-      } as React.CSSProperties,
-    };
-  }, [isDarkMode]);
+  const chart = useThemeTokens();
 
   // Dismiss the notifications dropdown on Escape or an outside click —
   // it previously stayed open and trapped nothing, which is a keyboard trap.
@@ -1026,7 +1010,7 @@ export default function App() {
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 overflow-hidden p-4 sm:p-6 flex flex-col focus:outline-none"
+          className="flex-1 overflow-hidden p-4 sm:p-6 pb-[calc(72px+env(safe-area-inset-bottom,0px))] lg:pb-6 flex flex-col focus:outline-none"
         >
           <ErrorBoundary scope={`view:${view}`}>
           <AnimatePresence mode="wait" initial={false}>
@@ -1096,10 +1080,9 @@ export default function App() {
                             center={[p.lat, p.lng]}
                             radius={i === livePins.length - 1 ? 13 : 8}
                             pathOptions={{
-                              color:
-                                p.priority === 'Critical' ? '#dc2626' :
-                                p.priority === 'High' ? '#f97316' :
-                                p.priority === 'Medium' ? '#eab308' : '#22c55e',
+                              color: chart.priority[
+                                (p.priority as keyof typeof chart.priority)
+                              ] ?? chart.priority.Low,
                               fillOpacity: i === livePins.length - 1 ? 0.75 : 0.35,
                               weight: i === livePins.length - 1 ? 3 : 1.5,
                             }}
@@ -1120,7 +1103,7 @@ export default function App() {
                           <CircleMarker
                             center={[userCoords.lat, userCoords.lng]}
                             radius={7}
-                            pathOptions={{ color: '#2563eb', fillOpacity: 0.9, weight: 2 }}
+                            pathOptions={{ color: chart.markerUser, fillOpacity: 0.9, weight: 2 }}
                           >
                             <Popup><span className="text-xs">You are here</span></Popup>
                           </CircleMarker>
@@ -1613,8 +1596,8 @@ export default function App() {
                             center={[c.lat, c.lng]} 
                             radius={8}
                             pathOptions={{ 
-                              color: c.priority === 'Critical' ? '#ef4444' : c.priority === 'High' ? '#f59e0b' : '#3b82f6',
-                              fillColor: c.priority === 'Critical' ? '#ef4444' : c.priority === 'High' ? '#f59e0b' : '#3b82f6',
+                              color: chart.priority[(c.priority as keyof typeof chart.priority)] ?? chart.priority.Medium,
+                              fillColor: chart.priority[(c.priority as keyof typeof chart.priority)] ?? chart.priority.Medium,
                               fillOpacity: 0.6
                             }}
                           >
@@ -1725,7 +1708,7 @@ export default function App() {
                     value={trackId}
                     onChange={(e) => { setTrackId(e.target.value.toUpperCase()); setTrackSearched(false); }}
                     placeholder="e.g. CIV-20240501-001"
-                    className="flex-1 h-14 rounded-2xl border-2 border-[var(--color-border)] px-6 font-mono font-bold focus:ring-0 focus:border-cta dark:focus:border-cta transition-all"
+                    className="field flex-1 h-14 rounded-2xl border-2 border-[var(--color-border-strong)] surface text-content px-6 font-mono font-bold outline-none"
                   />
                   <button
                     type="submit"
@@ -1795,7 +1778,7 @@ export default function App() {
                <div className="w-2 h-2 rounded-full bg-saffron"></div>
                <h3 className="font-bold text-sm uppercase">{lang === 'en' ? 'Recent History' : 'हाल का इतिहास'}</h3>
              </div>
-             <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-3">
+             <div className="stagger flex-1 overflow-y-auto pr-2 flex flex-col gap-3">
                {complaints.slice(0, 5).map(c => (
                  <div
                    key={c.id}
@@ -1825,9 +1808,10 @@ export default function App() {
         {selectedComplaint && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-navy/60 backdrop-blur-md">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0,
+                         transition: { type: 'spring', stiffness: 360, damping: 30 } }}
+              exit={{ opacity: 0, scale: 0.97, y: 8, transition: { duration: 0.16 } }}
               className="glass-strong rounded-[32px] w-full max-w-xl elev-3 overflow-hidden max-h-[90vh] overflow-y-auto"
             >
               <div className="p-8 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white flex justify-between items-center relative overflow-hidden">
@@ -1880,11 +1864,13 @@ export default function App() {
                         {tpl}
                       </button>
                     )) : (
-                      <div className="flex gap-2 p-3 surface-2 rounded-xl">
-                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse"></div>
-                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse delay-75"></div>
-                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse delay-150"></div>
-                      </div>
+                      <SkeletonRegion label="Generating suggested responses">
+                        <div className="flex flex-col gap-2">
+                          <Skeleton className="h-11 w-full" radius="var(--radius-md)" />
+                          <Skeleton className="h-11 w-[88%]" radius="var(--radius-md)" />
+                          <Skeleton className="h-11 w-[72%]" radius="var(--radius-md)" />
+                        </div>
+                      </SkeletonRegion>
                     )}
                   </div>
                 </div>
@@ -1925,14 +1911,26 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      <MobileNav
+        view={view}
+        onNavigate={setView}
+        lang={lang}
+        pendingCount={stats.pending}
+      />
+
       {/* Toast Notification */}
       <AnimatePresence>
         {toast && (
           <motion.div 
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 50, opacity: 0 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 bg-gradient-to-r from-navy to-navy-light dark:from-[#111827] dark:to-[#1E293B] text-white rounded-2xl elev-3 glow-navy flex items-center gap-3 border border-white/10"
+            initial={{ y: 40, opacity: 0, scale: 0.94 }}
+            animate={{ y: 0, opacity: 1, scale: 1,
+                       transition: { type: 'spring', stiffness: 420, damping: 30 } }}
+            exit={{ y: 20, opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
+            className="fixed left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl elev-4 flex items-center gap-3 glass-strong bordered"
+            style={{
+              bottom: 'calc(88px + env(safe-area-inset-bottom, 0px))',
+              zIndex: 'var(--z-toast)' as any,
+            }}
           >
             <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center text-xs shrink-0">✓</div>
             <span className="font-bold text-sm">{toast}</span>
@@ -1994,7 +1992,7 @@ function SidebarItem({ icon, label, active, badge, onClick }: any) {
   return (
     <button
       onClick={onClick}
-      className={`btn-sheen flex items-center gap-3 px-5 py-3 mx-2 rounded-xl transition-all relative ${
+      className={`nav-item btn-sheen flex items-center gap-3 px-5 py-3 mx-2 rounded-xl transition-all relative ${
         active
           ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-lg glow-navy'
           : 'text-content-2  hover:bg-[var(--color-surface-2)]  hover:text-cta '
