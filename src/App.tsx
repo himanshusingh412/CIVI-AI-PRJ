@@ -788,7 +788,7 @@ export default function App() {
             <h1 className="font-display font-bold text-xl tracking-tight text-gradient-premium">CivicAI</h1>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" aria-hidden="true" />
-              <span className="text-[10px] font-black uppercase text-content-3 tracking-widest truncate">
+              <span className="text-[12px] font-black uppercase text-content-3 tracking-widest truncate">
                 New Delhi Municipal Council
               </span>
             </div>
@@ -806,7 +806,7 @@ export default function App() {
                 key={code}
                 onClick={() => setLang(code)}
                 aria-pressed={lang === code}
-                className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors ${
+                className={`px-3 py-1 rounded-lg text-[12px] font-bold uppercase transition-colors ${
                   lang === code ? 'bg-cta text-white shadow-sm' : 'text-content-3 hover:text-content'
                 }`}
               >
@@ -859,11 +859,11 @@ export default function App() {
                       className="p-4 flex justify-between items-center surface-2"
                       style={{ borderBottom: '1px solid var(--color-border)' }}
                     >
-                      <span className="text-[10px] font-black uppercase tracking-widest text-content">Notifications</span>
+                      <span className="text-[12px] font-black uppercase tracking-widest text-content">Notifications</span>
                       <button
                         onClick={markAllNotificationsRead}
                         disabled={unreadCount === 0}
-                        className="text-[10px] font-bold text-saffron uppercase hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                        className="text-[12px] font-bold text-saffron uppercase hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
                       >
                         Mark all read
                       </button>
@@ -889,7 +889,7 @@ export default function App() {
                             {n.title}
                           </h4>
                           <p className="text-[11px] text-content-2 mt-0.5">{n.message}</p>
-                          <span className="text-[9px] font-bold text-content-3 mt-2 block">{n.timestamp}</span>
+                          <span className="text-[11px] font-bold text-content-3 mt-2 block">{n.timestamp}</span>
                         </button>
                       ))}
                     </div>
@@ -940,7 +940,7 @@ export default function App() {
           style={{ borderColor: 'var(--color-border)' }}
           aria-label="Main navigation"
         >
-          <div className="px-5 mb-2 text-[10px] font-bold text-content-3 tracking-[0.15em] uppercase">Main Menu</div>
+          <div className="px-5 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">Main Menu</div>
           <SidebarItem 
             active={view === 'chat'} 
             onClick={() => setView('chat')} 
@@ -967,7 +967,7 @@ export default function App() {
             label={lang === 'en' ? 'Transparency Feed' : 'ट्रांसपेरेंसी फीड'} 
           />
 
-          <div className="px-5 mt-6 mb-2 text-[10px] font-bold text-content-3 tracking-[0.15em] uppercase">Categories</div>
+          <div className="px-5 mt-6 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">Categories</div>
           <SidebarItem 
             icon={<MapPin size={18} />} 
             label={lang === 'en' ? 'Roads & Infra' : 'सड़क व ढांचा'} 
@@ -1031,7 +1031,7 @@ export default function App() {
                       <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                       {lang === 'en' ? 'Online • Govt. Verified System' : 'ऑनलाइन • सरकारी प्रणाली'}
                       {aiProvider && (
-                        <span className="ml-1 px-1.5 py-0.5 rounded surface-2 text-[9px] font-bold uppercase tracking-wide">
+                        <span className="ml-1 px-1.5 py-0.5 rounded surface-2 text-[11px] font-bold uppercase tracking-wide">
                           {aiProvider === 'fallback' ? 'offline mode' : aiProvider}
                         </span>
                       )}
@@ -1128,7 +1128,7 @@ export default function App() {
                           <MapPin size={15} className="text-saffron shrink-0" />
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-bold text-content truncate">{activePin.label}</p>
-                            <p className="text-[10px] text-content-3">
+                            <p className="text-[12px] text-content-3">
                               {activePin.category} · {activePin.priority} · {activePin.confidence} location
                             </p>
                           </div>
@@ -1155,7 +1155,7 @@ export default function App() {
                             <img src={pendingComplaint.photoUrl} className="mt-2 rounded-lg max-h-40 w-full object-cover border border-[var(--color-border)]" alt="Complaint Attachment" />
                           )}
                         </div>
-                        <span className={`text-[10px] text-content-3 mt-1 ${m.type === 'user' ? 'text-right' : ''}`}>{m.timestamp}</span>
+                        <span className={`text-[12px] text-content-3 mt-1 ${m.type === 'user' ? 'text-right' : ''}`}>{m.timestamp}</span>
                       </div>
                     </div>
                   ))}
@@ -1355,7 +1355,7 @@ export default function App() {
                               <button
                                 key={f}
                                 onClick={() => setDashboardFilter(f)}
-                                className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${
+                                className={`px-3 py-1 rounded-md text-[12px] font-bold transition-all ${
                                   dashboardFilter === f ? 'surface  text-content  shadow-sm' : 'text-content-3 hover:text-cta '
                                 }`}
                               >
@@ -1370,12 +1370,12 @@ export default function App() {
                         <table className="w-full text-left">
                           <thead>
                             <tr className="border-b border-[var(--color-border)] sticky top-0 surface z-10">
-                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">ID</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Category</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Description</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Status</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">SLA Timer</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Actions</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">ID</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Category</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Description</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Status</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">SLA Timer</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[var(--color-border)]">
@@ -1405,7 +1405,7 @@ export default function App() {
                                   <td className="px-6 py-4">
                                     <button
                                       onClick={() => setSelectedComplaint(c)}
-                                      className="btn-sheen px-3 py-1.5 bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white rounded-lg text-[10px] font-bold hover:shadow-md transition-all"
+                                      className="btn-sheen px-3 py-1.5 bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white rounded-lg text-[12px] font-bold hover:shadow-md transition-all"
                                     >VIEW DETAILS</button>
                                   </td>
                                 </tr>
@@ -1494,11 +1494,11 @@ export default function App() {
                         <div className="flex items-center gap-4">
                           <div className="flex items-center gap-1.5">
                             <div className="w-2.5 h-2.5 rounded-full bg-cta"></div>
-                            <span className="text-[10px] font-bold text-content-2 uppercase">Total</span>
+                            <span className="text-[12px] font-bold text-content-2 uppercase">Total</span>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                            <span className="text-[10px] font-bold text-content-2 uppercase">Resolved</span>
+                            <span className="text-[12px] font-bold text-content-2 uppercase">Resolved</span>
                           </div>
                         </div>
                       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
                             <div className="w-12 h-12 surface-2 rounded-2xl flex items-center justify-center text-xl grayscale group-hover:grayscale-0 transition-all">👨‍💼</div>
                             <div>
                               <h4 className="font-display font-bold text-content">{off.name}</h4>
-                              <p className="text-[10px] font-bold text-saffron uppercase tracking-widest">{off.ward}</p>
+                              <p className="text-[12px] font-bold text-saffron uppercase tracking-widest">{off.ward}</p>
                             </div>
                             <div className="ml-auto bg-yellow-50 text-yellow-600 px-2 py-1 rounded-lg flex items-center gap-1 text-xs font-bold">
                               ★ {off.rating.toFixed(1)}
@@ -1536,21 +1536,21 @@ export default function App() {
 
                           <div className="grid grid-cols-3 gap-3">
                             <div className="p-3 surface-2 rounded-2xl flex flex-col gap-1">
-                              <span className="text-[9px] font-bold text-content-3 uppercase tracking-tighter">Assigned</span>
+                              <span className="text-[11px] font-bold text-content-3 uppercase tracking-tighter">Assigned</span>
                               <span className="text-xl font-display font-bold text-content">{off.count}</span>
                             </div>
                             <div className="p-3 bg-green-50 rounded-2xl flex flex-col gap-1">
-                              <span className="text-[9px] font-bold text-green-400 uppercase tracking-tighter">Solved</span>
+                              <span className="text-[11px] font-bold text-green-400 uppercase tracking-tighter">Solved</span>
                               <span className="text-xl font-display font-bold text-green-600">{off.solved}</span>
                             </div>
                             <div className="p-3 bg-orange-50 rounded-2xl flex flex-col gap-1">
-                              <span className="text-[9px] font-bold text-orange-400 uppercase tracking-tighter">Pending</span>
+                              <span className="text-[11px] font-bold text-orange-400 uppercase tracking-tighter">Pending</span>
                               <span className="text-xl font-display font-bold text-orange-600">{off.pending}</span>
                             </div>
                           </div>
 
                           <div className="flex flex-col gap-2">
-                             <div className="flex justify-between items-center text-[10px] font-bold text-content-3 uppercase">
+                             <div className="flex justify-between items-center text-[12px] font-bold text-content-3 uppercase">
                                <span>Efficiency Rate</span>
                                <span>{off.count === 0 ? 0 : Math.round((off.solved / off.count) * 100)}%</span>
                              </div>
@@ -1578,12 +1578,12 @@ export default function App() {
                     <div className="flex items-center justify-between mb-4 px-2">
                        <div className="flex flex-col">
                           <h3 className="font-display font-bold text-content text-sm">Citizen Complaint Heatmap</h3>
-                          <p className="text-[10px] font-bold text-content-3 uppercase">Interactive spatial density map</p>
+                          <p className="text-[12px] font-bold text-content-3 uppercase">Interactive spatial density map</p>
                        </div>
                        <div className="flex gap-4">
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-[10px] font-bold text-content-2 uppercase">Critical</span></div>
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500"></div><span className="text-[10px] font-bold text-content-2 uppercase">High</span></div>
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[10px] font-bold text-content-2 uppercase">Normal</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">Critical</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">High</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">Normal</span></div>
                        </div>
                     </div>
                     <div className={`flex-1 rounded-2xl overflow-hidden border border-[var(--color-border)]  relative z-10 shadow-inner map-premium ${isDarkMode ? 'map-dark' : ''}`}>
@@ -1604,8 +1604,8 @@ export default function App() {
                             <Popup>
                               <div className="p-1">
                                 <div className="font-bold text-xs mb-1 font-mono">{c.id}</div>
-                                <div className="text-[10px] surface-2 p-2 rounded-lg leading-relaxed">{c.description}</div>
-                                <div className="mt-2 text-[10px] font-bold uppercase text-content flex justify-between">
+                                <div className="text-[12px] surface-2 p-2 rounded-lg leading-relaxed">{c.description}</div>
+                                <div className="mt-2 text-[12px] font-bold uppercase text-content flex justify-between">
                                   <span>{c.category}</span>
                                   <span>{c.priority}</span>
                                 </div>
@@ -1646,15 +1646,15 @@ export default function App() {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
-                      <div className="text-[10px] font-black text-content-3 uppercase mb-2">Resolved This Week</div>
+                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">Resolved This Week</div>
                       <div className="text-4xl font-display font-bold text-green-500">{stats.resolved + 12}</div>
                     </div>
                     <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
-                      <div className="text-[10px] font-black text-content-3 uppercase mb-2">Avg. Resolution Speed</div>
+                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">Avg. Resolution Speed</div>
                       <div className="text-4xl font-display font-bold text-blue-500">22.4h</div>
                     </div>
                     <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
-                      <div className="text-[10px] font-black text-content-3 uppercase mb-2">Public Trust Score</div>
+                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">Public Trust Score</div>
                       <div className="text-4xl font-display font-bold text-saffron">98.2%</div>
                     </div>
                   </div>
@@ -1667,13 +1667,13 @@ export default function App() {
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-black text-content-3 uppercase tracking-widest">{c.category} • {c.id}</span>
-                            <span className="text-[10px] font-bold text-content surface-2 px-2 py-1 rounded-full">{c.date}</span>
+                            <span className="text-[12px] font-black text-content-3 uppercase tracking-widest">{c.category} • {c.id}</span>
+                            <span className="text-[12px] font-bold text-content surface-2 px-2 py-1 rounded-full">{c.date}</span>
                           </div>
                           <h4 className="font-bold text-content mb-2">{c.description}</h4>
                           <div className="flex items-center gap-4">
                              <div className="flex items-center gap-1.5"><StatusBadge status={c.status} /></div>
-                             <div className="text-[10px] font-bold text-content-3 uppercase flex items-center gap-1"><MapPin size={10} /> Delhi, Ward {Math.floor(Math.random() * 50) + 1}</div>
+                             <div className="text-[12px] font-bold text-content-3 uppercase flex items-center gap-1"><MapPin size={10} /> Delhi, Ward {Math.floor(Math.random() * 50) + 1}</div>
                           </div>
                         </div>
                       </div>
@@ -1722,7 +1722,7 @@ export default function App() {
                         <div className="col-span-2 p-6 surface rounded-3xl border border-[var(--color-border)] elev-1 flex flex-col gap-6">
                            <div className="flex justify-between items-start">
                               <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-bold text-content-3 tracking-widest uppercase">Complaint Progress</span>
+                                <span className="text-[12px] font-bold text-content-3 tracking-widest uppercase">Complaint Progress</span>
                                 <h3 className="font-display font-bold text-xl">{c.category}</h3>
                               </div>
                               <StatusBadge status={c.status} />
@@ -1783,15 +1783,15 @@ export default function App() {
                    className="p-3 surface-2 rounded-xl border border-[var(--color-border)] hover:border-saffron dark:hover:border-saffron/50 transition-all cursor-pointer group"
                  >
                    <div className="flex justify-between items-center mb-1">
-                     <span className="font-mono text-[10px] font-bold text-content">{c.id}</span>
-                     <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full ${c.status === 'Resolved' ? 'bg-green-100 text-green-700  ' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                     <span className="font-mono text-[12px] font-bold text-content">{c.id}</span>
+                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${c.status === 'Resolved' ? 'bg-green-100 text-green-700  ' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                        {c.status}
                      </span>
                    </div>
                    <p className="text-[11px] text-content-2 font-medium truncate group-hover:text-content transition-colors">{c.description}</p>
                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--color-border-strong)]">
-                     <span className="text-[9px] text-content-3 flex items-center gap-1 font-bold"><MapPin size={10} /> {c.category}</span>
-                     <span className="text-[9px] text-content-3 font-bold italic">{c.date}</span>
+                     <span className="text-[11px] text-content-3 flex items-center gap-1 font-bold"><MapPin size={10} /> {c.category}</span>
+                     <span className="text-[11px] text-content-3 font-bold italic">{c.date}</span>
                    </div>
                  </div>
                ))}
@@ -1838,7 +1838,7 @@ export default function App() {
                 </div>
 
                 <div className="surface-2 p-6 rounded-2xl border border-[var(--color-border)]">
-                  <span className="text-[10px] font-bold text-content-3 uppercase tracking-widest block mb-2">Detailed Issue Description</span>
+                  <span className="text-[12px] font-bold text-content-3 uppercase tracking-widest block mb-2">Detailed Issue Description</span>
                   <p className="text-sm text-content leading-relaxed italic">{selectedComplaint.description}</p>
                 </div>
 
@@ -1982,7 +1982,7 @@ function SidebarItem({ icon, label, active, badge, onClick }: any) {
     >
       <span className={active ? 'text-saffron-light' : 'text-content-3'}>{icon}</span>
       <span className="text-[13px] font-bold flex-1 text-left">{label}</span>
-      {badge ? <span className="bg-gradient-to-br from-saffron to-saffron-bright text-white text-[10px] font-black px-2 py-0.5 rounded-full elev-1">{badge}</span> : null}
+      {badge ? <span className="bg-gradient-to-br from-saffron to-saffron-bright text-white text-[12px] font-black px-2 py-0.5 rounded-full elev-1">{badge}</span> : null}
     </button>
   );
 }
@@ -1997,7 +1997,7 @@ function StatCard({ label, value, icon, color }: any) {
   return (
     <TiltCard maxTilt={6} className="surface p-5 rounded-2xl bordered elev-2 flex flex-col gap-1 transition-shadow hover:elev-3">
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2 ${colors[color]}`} style={{ transform: 'translateZ(20px)' }}>{icon}</div>
-      <span className="text-[10px] font-bold text-content-3 uppercase tracking-wider">{label}</span>
+      <span className="text-[12px] font-bold text-content-3 uppercase tracking-wider">{label}</span>
       <span className="text-3xl font-display font-bold leading-tight" style={{ transform: 'translateZ(10px)' }}>{value}</span>
     </TiltCard>
   );
@@ -2043,7 +2043,7 @@ function StatusBadge({ status }: { status: Complaint['status'] }) {
   const config = configs[status] || configs['Pending'];
 
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-lg border tracking-tight ${config.classes}`}>
+    <span className={`inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1 rounded-lg border tracking-tight ${config.classes}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${config.dot} ${status === 'In Progress' ? 'animate-pulse' : ''} ${status === 'Emergency' ? 'animate-bounce' : ''}`}></span>
       {status}
     </span>
@@ -2053,7 +2053,7 @@ function StatusBadge({ status }: { status: Complaint['status'] }) {
 function DetailField({ label, value }: any) {
   return (
     <div className="p-4 surface-2 rounded-xl flex flex-col gap-1">
-      <span className="text-[10px] font-bold text-content-3 uppercase tracking-widest">{label}</span>
+      <span className="text-[12px] font-bold text-content-3 uppercase tracking-widest">{label}</span>
       <div className="text-sm font-bold text-content">{value}</div>
     </div>
   );
@@ -2067,7 +2067,7 @@ function PriorityBadge({ priority }: { priority: Complaint['priority'] }) {
     'Critical': 'bg-red-50 text-red-600',
   };
   return (
-    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md w-fit uppercase ${colors[priority || 'Low']}`}>
+    <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md w-fit uppercase ${colors[priority || 'Low']}`}>
       {priority || 'Low'}
     </span>
   );
@@ -2084,7 +2084,7 @@ function SLATimer({ deadline, status }: { deadline: number, status: string }) {
     return () => clearInterval(interval);
   }, [deadline, status]);
 
-  if (status === 'Resolved') return <span className="text-[10px] font-bold text-green-500 uppercase">RESOLVED</span>;
+  if (status === 'Resolved') return <span className="text-[12px] font-bold text-green-500 uppercase">RESOLVED</span>;
 
   const isOverdue = timeLeft < 0;
   const absTime = Math.abs(timeLeft);
@@ -2111,7 +2111,7 @@ function TimelineStep({ done, current, label, date, desc }: any) {
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center justify-between">
            <span className={`text-sm font-bold ${done ? 'text-content ' : current ? 'text-saffron' : 'text-content-3'}`}>{label}</span>
-           <span className="text-[10px] font-bold uppercase text-content-3">{date}</span>
+           <span className="text-[12px] font-bold uppercase text-content-3">{date}</span>
         </div>
         <p className={`text-xs ${done ? 'text-content-2 ' : 'text-content-3 '}`}>{desc}</p>
       </div>
@@ -2204,21 +2204,21 @@ function OfficerReportModal({ officer, onClose }: { officer: { name: string; war
         <div className="p-8 space-y-6">
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3 surface-2 rounded-2xl flex flex-col gap-1 text-center">
-              <span className="text-[9px] font-bold text-content-3 uppercase">Assigned</span>
+              <span className="text-[11px] font-bold text-content-3 uppercase">Assigned</span>
               <span className="text-2xl font-display font-bold text-content">{officer.count}</span>
             </div>
             <div className="p-3 bg-green-50 rounded-2xl flex flex-col gap-1 text-center">
-              <span className="text-[9px] font-bold text-green-500 uppercase">Solved</span>
+              <span className="text-[11px] font-bold text-green-500 uppercase">Solved</span>
               <span className="text-2xl font-display font-bold text-green-600">{officer.solved}</span>
             </div>
             <div className="p-3 bg-orange-50 rounded-2xl flex flex-col gap-1 text-center">
-              <span className="text-[9px] font-bold text-orange-400 uppercase">Pending</span>
+              <span className="text-[11px] font-bold text-orange-400 uppercase">Pending</span>
               <span className="text-2xl font-display font-bold text-orange-600">{officer.pending}</span>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center text-[10px] font-bold text-content-3 uppercase">
+            <div className="flex justify-between items-center text-[12px] font-bold text-content-3 uppercase">
               <span className="flex items-center gap-1.5"><Gauge size={12} /> Efficiency Rate</span>
               <span>{efficiency}%</span>
             </div>

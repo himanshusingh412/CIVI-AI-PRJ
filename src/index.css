@@ -46,7 +46,10 @@
   --color-border-strong: #CBD5E1;
   --color-content: #0F172A;       /* primary text */
   --color-content-2: #334155;     /* secondary text */
-  --color-content-3: #64748B;     /* muted labels — 4.8:1 on white */
+  /* Muted labels. #64748B clears 4.5:1 on pure white but drops to 4.34:1
+     once it sits on --color-surface-2, which is where most of these labels
+     actually live. Darkened so it passes AA on every surface, not just one. */
+  --color-content-3: #4E5A6B;
   --color-overlay: rgb(15 23 42 / 0.6);
 
   /* Chart palette — referenced from JS via getComputedStyle */
@@ -80,7 +83,9 @@
   --color-border-strong: #334155;
   --color-content: #F1F5F9;
   --color-content-2: #CBD5E1;
-  --color-content-3: #94A3B8;     /* 5.9:1 on #111827 */
+  /* Lifted from #94A3B8, which fell to 4.04:1 on --color-surface-3.
+     #A3B1C2 clears AA on all three dark surfaces (8.1 / 6.7 / 4.75). */
+  --color-content-3: #A3B1C2;
   --color-overlay: rgb(2 6 23 / 0.72);
 
   --color-navy: #E2E8F0;
