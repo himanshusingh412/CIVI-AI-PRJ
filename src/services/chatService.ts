@@ -1,4 +1,10 @@
-import { authHeaders } from './authService';
+const CSRF_COOKIE = 'civicai_csrf';
+
+/** Mirrors authService's CSRF handling for this module's raw fetch. */
+function csrfHeaders(): Record<string, string> {
+  const m = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`));
+  return m ? { 'x-csrf-token': decodeURIComponent(m[1]) } : {};
+}
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
@@ -55,7 +61,8 @@ export async function sendChat(
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
       body: JSON.stringify(payload),
     });
 

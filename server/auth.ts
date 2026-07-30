@@ -1,20 +1,30 @@
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
-import { sendOtpSms, normalizeMobile, maskMobile } from './sms.js';
 import { sendOtpEmail, isValidEmail, maskEmail } from './email.js';
+import { tokenFromRequest, safeEqual } from './security.js';
 
 // ───────────────────────── config ─────────────────────────
 export const AUTH_LIMITS = {
   OTP_TTL_MS: 5 * 60_000,          // OTP valid 5 minutes
-  MAX_VERIFY_ATTEMPTS: 9,          // wrong-OTP tries before the code is burned
+  MAX_VERIFY_ATTEMPTS: 6,          // wrong-OTP tries before the code is burned
   MAX_OTP_REQUESTS: 5,             // OTP sends per identifier per window
   OTP_REQUEST_WINDOW_MS: 15 * 60_000,
   RESEND_COOLDOWN_MS: 30_000,      // must wait between sends
   LOCKOUT_MS: 15 * 60_000,         // lockout after exhausting attempts
   SESSION_TTL_MS: 60 * 60_000,     // session valid 1 hour
+  SESSION_ABSOLUTE_TTL_MS: 12 * 60 * 60_000, // hard cap regardless of refreshes
 } as const;
 
-export type Channel = 'email' | 'phone';
+/**
+ * Generic, non-committal copy. Every terminal outcome of "request a code"
+ * returns the SAME string so an attacker cannot distinguish a real account,
+ * a typo, or a delivery failure.
+ */
+export const GENERIC_OTP_SENT =
+  'If an account can be created or found for that address, a 6-digit code has been sent.';
+const GENERIC_BAD_CODE = 'That code is invalid or has expired. Please request a new one.';
+
+export type Channel = 'email' | 'google';
 
 // ───────────────────────── stores ─────────────────────────
 type OtpRecord = {
@@ -25,13 +35,16 @@ type OtpRecord = {
   windowStartedAt: number;
   lastSentAt: number;
   lockedUntil: number;
-  channel: Channel;
   display: string;      // masked identifier for UI
 };
-type Session = { identifier: string; channel: Channel; expiresAt: number; createdAt: number };
-
+/**
+ * OTP state is per-instance and in-memory.
+ * NOTE: on serverless this means an OTP issued by one instance may not be
+ * verifiable by another. Google Sign-In (the primary path) is fully stateless
+ * and unaffected. Back this with Redis/Upstash before relying on email OTP
+ * in a multi-instance deployment.
+ */
 const otpStore = new Map<string, OtpRecord>();   // key: canonical identifier
-const sessions = new Map<string, Session>();     // key: token
 
 const sweep = setInterval(() => {
   const now = Date.now();
@@ -40,56 +53,38 @@ const sweep = setInterval(() => {
       otpStore.delete(k);
     }
   }
-  for (const [k, s] of sessions) if (s.expiresAt < now) sessions.delete(k);
 }, 60_000);
 sweep.unref?.();
 
 // ───────────────────────── identifier handling ─────────────────────────
-const hash = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
+const sha256 = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
 
 export type ParsedIdentifier =
-  | { ok: true; channel: Channel; canonical: string; display: string; e164?: string; local?: string }
+  | { ok: true; channel: 'email'; canonical: string; display: string }
   | { ok: false; reason: string };
 
-/** Accepts an email address or an Indian mobile number and normalizes it. */
+/** Email-only. Phone/SMS auth was removed in favour of Google + email OTP. */
 export function parseIdentifier(raw: string): ParsedIdentifier {
   const value = String(raw || '').trim();
-  if (!value) return { ok: false, reason: 'Enter your email address or mobile number.' };
+  if (!value) return { ok: false, reason: 'Enter your email address.' };
 
-  // Anything containing "@" is treated as an email attempt
-  if (value.includes('@')) {
-    const check = isValidEmail(value);
-    if (!check.ok) return { ok: false, reason: check.reason! };
-    const canonical = value.toLowerCase();
-    return { ok: true, channel: 'email', canonical, display: maskEmail(canonical) };
-  }
+  const check = isValidEmail(value);
+  // Format feedback is safe: it describes the input, not whether an account exists.
+  if (!check.ok) return { ok: false, reason: check.reason! };
 
-  const mobile = normalizeMobile(value);
-  if (!mobile.ok) {
-    // If it has letters it was probably a malformed email
-    if (/[a-zA-Z]/.test(value)) return { ok: false, reason: 'Enter a valid email address or 10-digit mobile number.' };
-    return { ok: false, reason: mobile.reason! };
-  }
-  return {
-    ok: true,
-    channel: 'phone',
-    canonical: `+${mobile.e164}`,
-    display: maskMobile(mobile.local!),
-    e164: mobile.e164,
-    local: mobile.local,
-  };
+  const canonical = value.toLowerCase();
+  return { ok: true, channel: 'email', canonical, display: maskEmail(canonical) };
 }
 
 // ───────────────────────── OTP flow ─────────────────────────
 export type RequestOtpResult =
   | {
       ok: true;
-      channel: Channel;
+      channel: 'email';
       maskedIdentifier: string;
       expiresInSec: number;
+      message: string;
       devOtp?: string;
-      sendsRemaining: number;
-      delivery: 'sms' | 'email' | 'console';
     }
   | { ok: false; status: number; error: string; message: string; retryAfterSec?: number };
 
@@ -103,11 +98,13 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
   const now = Date.now();
   let rec = otpStore.get(key);
 
+  // Rate-limit signals describe the *requester's* behaviour, not account
+  // existence, so surfacing them is safe and materially better UX.
   if (rec?.lockedUntil && rec.lockedUntil > now) {
     const secs = Math.ceil((rec.lockedUntil - now) / 1000);
     return {
       ok: false, status: 429, error: 'locked_out',
-      message: `Too many attempts. This account is locked for ${Math.ceil(secs / 60)} more minute(s).`,
+      message: `Too many attempts. Try again in ${Math.ceil(secs / 60)} minute(s).`,
       retryAfterSec: secs,
     };
   }
@@ -116,10 +113,9 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
     rec = {
       hash: '', expiresAt: 0, attempts: 0, sends: 0,
       windowStartedAt: now, lastSentAt: 0, lockedUntil: 0,
-      channel: parsed.channel, display: parsed.display,
+      display: parsed.display,
     };
   }
-  rec.channel = parsed.channel;
   rec.display = parsed.display;
 
   if (rec.lastSentAt && now - rec.lastSentAt < AUTH_LIMITS.RESEND_COOLDOWN_MS) {
@@ -142,42 +138,31 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
   }
 
   const otp = String(crypto.randomInt(100000, 1000000)); // 6-digit
+  const delivery = await sendOtpEmail(parsed.canonical, otp);
 
-  // Deliver first — a gateway failure must not consume a send.
-  const delivery = parsed.channel === 'email'
-    ? await sendOtpEmail(parsed.canonical, otp)
-    : await sendOtpSms(parsed.e164!, parsed.local!, otp);
-
-  if (!delivery.ok) {
-    return {
-      ok: false,
-      status: 502,
-      error: 'delivery_failed',
-      message: parsed.channel === 'email'
-        ? 'Could not send the email right now. Please check the address and try again.'
-        : 'Could not send the SMS right now. Please check the number and try again.',
-    };
+  // A delivery failure is NOT reported to the client: "we couldn't email
+  // that address" is a strong account/validity oracle. Log it, record the
+  // send, and return the same generic response as success.
+  if (delivery.ok === false) {
+    console.error('[auth] OTP delivery failed for', parsed.display, '-', delivery.error);
   }
 
-  rec.hash = hash(`${key}:${otp}`);
+  rec.hash = sha256(`${key}:${otp}`);
   rec.expiresAt = now + AUTH_LIMITS.OTP_TTL_MS;
   rec.attempts = 0;
   rec.sends += 1;
   rec.lastSentAt = now;
   otpStore.set(key, rec);
 
-  const devMode = process.env.AUTH_DEV_OTP !== 'false' || delivery.provider === 'console' || !!process.env.VERCEL || !!process.env.VERCEL_ENV;
-  const deliveryLabel: 'sms' | 'email' | 'console' =
-    delivery.provider === 'console' ? 'console' : parsed.channel === 'email' ? 'email' : 'sms';
+  const devMode = process.env.AUTH_DEV_OTP === 'true' && process.env.NODE_ENV !== 'production';
 
   return {
     ok: true,
-    channel: parsed.channel,
+    channel: 'email',
     maskedIdentifier: parsed.display,
     expiresInSec: Math.floor(AUTH_LIMITS.OTP_TTL_MS / 1000),
-    sendsRemaining: AUTH_LIMITS.MAX_OTP_REQUESTS - rec.sends,
-    delivery: deliveryLabel,
-    devOtp: otp,
+    message: GENERIC_OTP_SENT,
+    ...(devMode && delivery.provider === 'console' ? { devOtp: otp } : {}),
   };
 }
 
@@ -188,7 +173,9 @@ export type VerifyOtpResult =
 export function verifyOtp(rawIdentifier: string, otp: string): VerifyOtpResult {
   const parsed = parseIdentifier(rawIdentifier);
   if (parsed.ok === false) {
-    return { ok: false, status: 400, error: 'invalid_identifier', message: parsed.reason };
+    // Deliberately generic — do not echo "that email looks malformed" here,
+    // which would let an attacker probe address validity via the verify step.
+    return { ok: false, status: 400, error: 'invalid', message: GENERIC_BAD_CODE };
   }
 
   const key = parsed.canonical;
@@ -199,37 +186,19 @@ export function verifyOtp(rawIdentifier: string, otp: string): VerifyOtpResult {
     const secs = Math.ceil((rec.lockedUntil - now) / 1000);
     return {
       ok: false, status: 429, error: 'locked_out',
-      message: `Locked out. Try again in ${Math.ceil(secs / 60)} minute(s).`,
+      message: `Too many attempts. Try again in ${Math.ceil(secs / 60)} minute(s).`,
       retryAfterSec: secs,
     };
   }
-  if (!rec || !rec.hash) {
-    // In serverless environments or dev mode, server instances do not share in-memory Maps.
-    // If a valid 6-digit code is provided, allow verification and issue a stateless session.
-    if (process.env.AUTH_DEV_OTP === 'true' || process.env.VERCEL || process.env.VERCEL_ENV || true) {
-      if (/^\d{6}$/.test(otp)) {
-        return { ok: true, ...issueSession(parsed.display, parsed.channel) };
-      }
-    }
-    return { ok: false, status: 400, error: 'no_otp', message: 'No code was requested for this account.' };
+
+  // "No code requested" and "code expired" collapse into one message so the
+  // response cannot be used to test which addresses have pending codes.
+  if (!rec || !rec.hash || rec.expiresAt < now || !/^\d{6}$/.test(otp)) {
+    return { ok: false, status: 400, error: 'invalid', message: GENERIC_BAD_CODE };
   }
 
-  if (rec.expiresAt < now) {
-    return { ok: false, status: 400, error: 'expired', message: 'Code expired. Please request a new one.' };
-  }
-  if (!/^\d{6}$/.test(otp)) {
-    return {
-      ok: false, status: 400, error: 'malformed', message: 'Code must be 6 digits.',
-      attemptsRemaining: AUTH_LIMITS.MAX_VERIFY_ATTEMPTS - rec.attempts,
-    };
-  }
-
-  const candidate = hash(`${key}:${otp}`);
-  const match =
-    candidate.length === rec.hash.length &&
-    crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(rec.hash));
-
-  if (!match) {
+  const candidate = sha256(`${key}:${otp}`);
+  if (!safeEqual(candidate, rec.hash)) {
     rec.attempts += 1;
     const remaining = AUTH_LIMITS.MAX_VERIFY_ATTEMPTS - rec.attempts;
     if (remaining <= 0) {
@@ -244,69 +213,178 @@ export function verifyOtp(rawIdentifier: string, otp: string): VerifyOtpResult {
     }
     otpStore.set(key, rec);
     return {
-      ok: false, status: 401, error: 'invalid_otp',
-      message: `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
+      ok: false, status: 401, error: 'invalid',
+      message: `${GENERIC_BAD_CODE} ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
       attemptsRemaining: remaining,
     };
   }
 
   // success — burn the OTP, issue a session
   const display = rec.display;
-  const channel = rec.channel;
   otpStore.delete(key);
-
-  return { ok: true, ...issueSession(display, channel) };
+  return { ok: true, ...issueSession(display, 'email') };
 }
 
-const SESSION_SECRET = process.env.SESSION_SECRET || 'civicai-session-secret-key-2026';
+// ───────────────────────── sessions (stateless) ─────────────────────────
+/**
+ * Sessions are stateless, HMAC-signed tokens rather than server-side state.
+ *
+ * This app deploys to Vercel serverless (see api/index.ts), where each
+ * invocation may hit a fresh instance — an in-memory session Map silently
+ * logs users out at random. Signing the session instead makes verification
+ * work on any instance with zero shared storage.
+ *
+ * Format: v1.<base64url(payload)>.<base64url(hmac-sha256)>
+ */
+const SESSION_SECRET = (() => {
+  const fromEnv = process.env.SESSION_SECRET;
+  if (fromEnv && fromEnv.length >= 32) return fromEnv;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SESSION_SECRET must be set to a random string of at least 32 characters in production.',
+    );
+  }
+  console.warn(
+    '[auth] SESSION_SECRET not set — using an ephemeral dev secret. ' +
+    'Sessions will be invalidated on restart. Set SESSION_SECRET in .env.',
+  );
+  return crypto.randomBytes(32).toString('hex');
+})();
 
-/** Creates a stateless signed session token — safe across serverless instances. */
+type SessionPayload = {
+  sub: string;      // masked identifier (never the raw address)
+  ch: Channel;
+  iat: number;
+  exp: number;      // sliding expiry
+  abs: number;      // absolute expiry, never extended by refresh
+  jti: string;      // unique id, used for revocation
+};
+
+const b64u = (buf: Buffer | string) => Buffer.from(buf).toString('base64url');
+const sign = (data: string) =>
+  crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+
+/**
+ * Best-effort revocation list for explicit logouts. Entries self-expire with
+ * the token's own lifetime, so the map stays small.
+ * NOTE: on multi-instance/serverless this is per-instance. Tokens are short
+ * lived (1h) which bounds the exposure; use Redis here for hard revocation.
+ */
+const revokedJti = new Map<string, number>();
+const revokeSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [jti, exp] of revokedJti) if (exp < now) revokedJti.delete(jti);
+}, 60_000);
+revokeSweep.unref?.();
+
+function mint(payload: SessionPayload) {
+  const body = b64u(JSON.stringify(payload));
+  const data = `v1.${body}`;
+  return `${data}.${sign(data)}`;
+}
+
 export function issueSession(identifier: string, channel: Channel) {
   const now = Date.now();
-  const expiresAt = now + AUTH_LIMITS.SESSION_TTL_MS;
-  const payloadStr = Buffer.from(JSON.stringify({ identifier, channel, expiresAt, createdAt: now })).toString('base64url');
-  const signature = crypto.createHmac('sha256', SESSION_SECRET).update(payloadStr).digest('hex');
-  const token = `${payloadStr}.${signature}`;
-  sessions.set(token, { identifier, channel, expiresAt, createdAt: now });
-  return { token, identifier, channel, expiresInSec: Math.floor(AUTH_LIMITS.SESSION_TTL_MS / 1000) };
+  const payload: SessionPayload = {
+    sub: identifier,
+    ch: channel,
+    iat: now,
+    exp: now + AUTH_LIMITS.SESSION_TTL_MS,
+    abs: now + AUTH_LIMITS.SESSION_ABSOLUTE_TTL_MS,
+    jti: crypto.randomBytes(12).toString('base64url'),
+  };
+  return {
+    token: mint(payload),
+    identifier,
+    channel,
+    expiresInSec: Math.floor(AUTH_LIMITS.SESSION_TTL_MS / 1000),
+  };
 }
 
-export function revokeSession(token: string) {
-  return sessions.delete(token);
+function parseToken(token: string | undefined): SessionPayload | null {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== 'v1') return null;
+
+  const data = `${parts[0]}.${parts[1]}`;
+  if (!safeEqual(sign(data), parts[2])) return null;
+
+  let payload: SessionPayload;
+  try {
+    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+
+  const now = Date.now();
+  if (typeof payload?.exp !== 'number' || typeof payload?.abs !== 'number') return null;
+  if (payload.exp < now || payload.abs < now) return null;
+  if (payload.jti && revokedJti.has(payload.jti)) return null;
+
+  return payload;
 }
 
 export function getSession(token: string | undefined) {
-  if (!token) return null;
-  const parts = token.split('.');
-  if (parts.length === 2) {
-    const [payloadStr, signature] = parts;
-    const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payloadStr).digest('hex');
-    if (signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      try {
-        const s = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf8'));
-        if (s.expiresAt > Date.now()) return s;
-      } catch {
-        return null;
-      }
-    }
-  }
-  const s = sessions.get(token);
-  if (!s) return null;
-  if (s.expiresAt < Date.now()) {
-    sessions.delete(token);
-    return null;
-  }
-  return s;
+  const p = parseToken(token);
+  if (!p) return null;
+  return {
+    identifier: p.sub,
+    channel: p.ch,
+    expiresAt: p.exp,
+    createdAt: p.iat,
+    absoluteExpiresAt: p.abs,
+  };
+}
+
+export function revokeSession(token: string | undefined) {
+  const p = parseToken(token);
+  if (!p) return false;
+  revokedJti.set(p.jti, p.abs);
+  return true;
+}
+
+/**
+ * Sliding refresh with rotation: the previous token is revoked and a new one
+ * minted, bounding the useful life of a leaked token. The absolute expiry is
+ * carried over and never extended, so a session cannot live forever.
+ */
+export function refreshSession(token: string | undefined) {
+  const p = parseToken(token);
+  if (!p) return null;
+
+  const now = Date.now();
+  const exp = Math.min(now + AUTH_LIMITS.SESSION_TTL_MS, p.abs);
+  if (exp <= now) return null;
+
+  revokedJti.set(p.jti, p.abs);
+
+  const next: SessionPayload = {
+    ...p,
+    iat: now,
+    exp,
+    jti: crypto.randomBytes(12).toString('base64url'),
+  };
+
+  return {
+    token: mint(next),
+    identifier: p.sub,
+    channel: p.ch,
+    expiresInSec: Math.max(0, Math.floor((exp - now) / 1000)),
+  };
 }
 
 /** Express middleware — requires a live session on protected routes. */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
-  const session = getSession(token);
+  const session = getSession(tokenFromRequest(req));
   if (!session) {
-    return res.status(401).json({ error: 'unauthorized', message: 'Session expired or invalid. Please log in again.' });
+    return res.status(401).json({ error: 'unauthorized', message: 'Your session has expired. Please sign in again.' });
   }
   (req as Request & { session?: unknown }).session = session;
   next();
 }
+
+export const sessionStats = () => ({
+  mode: 'stateless-hmac',
+  pendingOtps: otpStore.size,
+  revoked: revokedJti.size,
+});

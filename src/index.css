@@ -1,9 +1,10 @@
+/* Design system: "Accessible & Ethical" — WCAG AA/AAA target for public-sector use.
+   Typography: Lexend (headings, tuned for reading proficiency) + Source Sans 3 (body).
+   NOTE: font @import must be the very first rule, otherwise the CSS spec
+   (and the build's minifier) rejects it once Tailwind's rules are inlined. */
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
-
-/* Design system: "Accessible & Ethical" — WCAG AAA target for public-sector use.
-   Typography: Lexend (headings, tuned for reading proficiency) + Source Sans 3 (body). */
-@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 @theme {
   --font-sans: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
@@ -34,6 +35,29 @@
   --color-text-main: #020617;
   --color-text-muted: #475569;    /* 7.5:1 — replaces gray-400 for real text */
 
+  /* ── Semantic surface/content tokens ──────────────────────────
+     These are the ONLY colors components should reference for
+     backgrounds, text and borders. They flip wholesale in .dark,
+     so no component needs its own dark: variant to stay readable. */
+  --color-surface: #FFFFFF;       /* cards, navbar, modals */
+  --color-surface-2: #F1F5F9;     /* insets, table headers, chips */
+  --color-surface-3: #E2E8F0;     /* pressed / track backgrounds */
+  --color-border: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+  --color-content: #0F172A;       /* primary text */
+  --color-content-2: #334155;     /* secondary text */
+  --color-content-3: #64748B;     /* muted labels — 4.8:1 on white */
+  --color-overlay: rgb(15 23 42 / 0.6);
+
+  /* Chart palette — referenced from JS via getComputedStyle */
+  --color-chart-1: #0369A1;
+  --color-chart-2: #C2410C;
+  --color-chart-3: #15803D;
+  --color-chart-4: #7C3AED;
+  --color-chart-5: #B45309;
+  --color-chart-grid: #E2E8F0;
+  --color-chart-axis: #64748B;
+
   /* z-index scale */
   --z-dropdown: 10;
   --z-sticky: 20;
@@ -41,23 +65,45 @@
   --z-modal: 50;
 }
 
+/* Dark theme: override semantic tokens only. Never remap Tailwind's
+   palette (bg-white, gray-100, …) — doing that inverts utilities
+   silently and breaks any hardcoded text color sitting on top. */
 .dark {
-  --color-bg-main: #020617;
+  --color-bg-main: #0A0F1D;
   --color-text-main: #F1F5F9;
   --color-text-muted: #94A3B8;
-  --color-navy: #F1F5F9;
+
+  --color-surface: #111827;
+  --color-surface-2: #1E293B;
+  --color-surface-3: #334155;
+  --color-border: #1E293B;
+  --color-border-strong: #334155;
+  --color-content: #F1F5F9;
+  --color-content-2: #CBD5E1;
+  --color-content-3: #94A3B8;     /* 5.9:1 on #111827 */
+  --color-overlay: rgb(2 6 23 / 0.72);
+
+  --color-navy: #E2E8F0;
   --color-saffron: #FB923C;       /* lightened for dark surfaces */
+  --color-saffron-pale: #2A1608;
   --color-cta: #38BDF8;
-  --color-gray-50: #0F172A;
-  --color-gray-100: #1E293B;
-  --color-gray-200: #334155;
-  --color-gray-400: #94A3B8;
-  --color-600: #CBD5E1;
-  --color-gray-600: #CBD5E1;
-  --color-white: #0F172A;
+  --color-cta-hover: #7DD3FC;
+  --color-success: #4ADE80;
   --color-success-pale: #052E16;
-  --color-danger-pale: #450A0A;
+  --color-warning: #FBBF24;
+  --color-warning-pale: #2A1D05;
+  --color-danger: #F87171;
+  --color-danger-pale: #2A0A0A;
+  --color-info: #38BDF8;
   --color-info-pale: #082F49;
+
+  --color-chart-1: #38BDF8;
+  --color-chart-2: #FB923C;
+  --color-chart-3: #4ADE80;
+  --color-chart-4: #A78BFA;
+  --color-chart-5: #FBBF24;
+  --color-chart-grid: #1E293B;
+  --color-chart-axis: #94A3B8;
 }
 
 @layer base {
@@ -97,14 +143,49 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Tells the browser to render native widgets (scrollbars, date pickers,
+   autofill, form controls) in the matching theme. */
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+/* Chrome autofill repaints inputs bright yellow-white, which destroys
+   contrast in dark mode. Repaint it with the surface token instead. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-content);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+  caret-color: var(--color-content);
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* ── Semantic surface utilities ──────────────────────────────── */
+.surface { background-color: var(--color-surface); color: var(--color-content); }
+.surface-2 { background-color: var(--color-surface-2); color: var(--color-content); }
+.bordered { border: 1px solid var(--color-border); }
+.text-content { color: var(--color-content); }
+.text-content-2 { color: var(--color-content-2); }
+.text-content-3 { color: var(--color-content-3); }
+
+/* Screen-reader-only text that still receives focus */
+.sr-only-focusable:not(:focus):not(:focus-within) {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Skip link — first tab stop for screen-reader / keyboard users */
 .skip-link {
   position: absolute;
   left: -9999px;
   top: 0;
-  z-index: 100;
+  z-index: 1000;
   padding: 0.75rem 1.25rem;
-  background: var(--color-navy);
+  background: var(--color-cta);
   color: #fff;
   font-weight: 700;
   border-radius: 0 0 0.75rem 0;
@@ -125,11 +206,11 @@ body {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: var(--color-border-strong);
   border-radius: 99px;
 }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-.dark ::-webkit-scrollbar-thumb { background: #334155; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-content-3); }
+* { scrollbar-color: var(--color-border-strong) transparent; }
 
 @keyframes typingBounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
@@ -143,9 +224,8 @@ body {
 .skeleton {
   position: relative;
   overflow: hidden;
-  background: #E2E8F0;
+  background: var(--color-surface-3);
 }
-.dark .skeleton { background: #1E293B; }
 .skeleton::after {
   content: '';
   position: absolute;
@@ -172,31 +252,37 @@ body {
    PREMIUM LAYER — glass, glow, gradients, 3D depth
    ══════════════════════════════════════════════════════════ */
 
-/* Glassmorphism surface */
+/* Glassmorphism surfaces.
+   Text color is set explicitly so anything nested inherits a readable
+   value in both themes without needing its own dark: variant. */
 .glass {
-  background: rgba(255, 255, 255, 0.72);
+  background: rgb(255 255 255 / 0.72);
+  color: var(--color-content);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-color: rgb(255 255 255 / 0.5);
 }
 .dark .glass {
-  background: rgba(17, 24, 39, 0.55);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgb(17 24 39 / 0.62);
+  border-color: rgb(255 255 255 / 0.08);
 }
 
 .glass-strong {
-  background: rgba(255, 255, 255, 0.88);
+  background: rgb(255 255 255 / 0.92);
+  color: var(--color-content);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-color: rgb(255 255 255 / 0.6);
 }
 .dark .glass-strong {
-  background: rgba(15, 23, 42, 0.82);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgb(17 24 39 / 0.92);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+/* Fallback for browsers without backdrop-filter (Firefox w/ flag off) —
+   without this the panels render near-transparent and text is unreadable. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .glass-strong { background: var(--color-surface); }
 }
 
 /* Ambient glow accents */

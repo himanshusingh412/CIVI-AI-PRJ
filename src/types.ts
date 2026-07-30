@@ -7,7 +7,9 @@ export interface Complaint {
   description: string;
   status: 'Pending' | 'In Progress' | 'Resolved' | 'Emergency';
   priority: 'Low' | 'Medium' | 'High' | 'Critical';
-  sentiment?: 'Frustrated' | 'Neutral' | 'Polite';
+  // 'Angry' is part of the server-side analysis enum (see /api/analyze-complaint)
+  // — it was missing here, so a valid AI response was an unrepresentable state.
+  sentiment?: 'Frustrated' | 'Neutral' | 'Polite' | 'Angry';
   escalated?: boolean;
   photoUrl?: string;
   rating?: number;

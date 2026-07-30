@@ -1,21 +1,18 @@
-const TOKEN_KEY = 'civicai_token';
+/**
+ * Auth transport.
+ *
+ * Sessions live in an httpOnly cookie set by the server — the token is
+ * deliberately unreachable from JavaScript, so an XSS cannot steal it.
+ * We only keep the CSRF token in memory and echo it back in a header
+ * (double-submit pattern).
+ */
 
-export type Channel = 'email' | 'phone';
+export type Channel = 'email' | 'google';
 
-export function getToken(): string | null {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
-}
-export function setToken(token: string) {
-  try { localStorage.setItem(TOKEN_KEY, token); } catch { /* storage blocked */ }
-}
-export function clearToken() {
-  try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage blocked */ }
-}
-
-export function authHeaders(): Record<string, string> {
-  const t = getToken();
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
+export type AuthUser = {
+  identifier: string;   // already masked by the server
+  channel: Channel;
+};
 
 export type AuthError = {
   ok: false;
@@ -25,71 +22,121 @@ export type AuthError = {
   retryAfterSec?: number;
 };
 
-export type RequestOtpOk = {
+export type SessionOk = {
   ok: true;
-  channel: Channel;
-  maskedIdentifier: string;
-  expiresInSec: number;
-  sendsRemaining: number;
-  delivery: 'sms' | 'email' | 'console';
-  devOtp?: string;
-};
-
-export type VerifyOtpOk = {
-  ok: true;
-  token: string;
   identifier: string;
   channel: Channel;
   expiresInSec: number;
+  csrfToken: string;
 };
 
-async function post<T>(path: string, body: unknown): Promise<T | AuthError> {
+export type RequestOtpOk = {
+  ok: true;
+  channel: 'email';
+  maskedIdentifier: string;
+  expiresInSec: number;
+  message: string;
+  devOtp?: string;
+};
+
+const CSRF_COOKIE = 'civicai_csrf';
+const CSRF_HEADER = 'x-csrf-token';
+
+/** Reads the (non-httpOnly) CSRF cookie the server issued. */
+function csrfFromCookie(): string {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function isAuthError(v: unknown): v is AuthError {
+  return !!v && typeof v === 'object' && (v as any).ok === false;
+}
+
+const NETWORK_ERROR: AuthError = {
+  ok: false,
+  error: 'network',
+  message: 'Cannot reach the server. Check your connection and try again.',
+};
+
+/**
+ * All mutating calls go through here so the CSRF header and credentials
+ * are never accidentally omitted.
+ */
+export async function apiPost<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T | AuthError> {
   try {
     const res = await fetch(path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(body),
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        [CSRF_HEADER]: csrfFromCookie(),
+      },
+      body: JSON.stringify(body ?? {}),
+      signal,
     });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const retryHeader = Number(res.headers.get('Retry-After'));
+      return {
+        ok: false,
+        error: data.error || 'request_failed',
+        // Never surface a raw status code or server text to the user.
+        message: data.message || 'Something went wrong. Please try again.',
+        attemptsRemaining: data.attemptsRemaining,
+        retryAfterSec: data.retryAfterSec ?? (Number.isFinite(retryHeader) ? retryHeader : undefined),
+      };
+    }
+    return data as T;
+  } catch (err) {
+    if ((err as any)?.name === 'AbortError') throw err;
+    return NETWORK_ERROR;
+  }
+}
+
+export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T | AuthError> {
+  try {
+    const res = await fetch(path, { credentials: 'same-origin', signal });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       return {
         ok: false,
         error: data.error || 'request_failed',
-        message: data.message || `Request failed (${res.status}).`,
-        attemptsRemaining: data.attemptsRemaining,
-        retryAfterSec: data.retryAfterSec ?? Number(res.headers.get('Retry-After')) ?? undefined,
+        message: data.message || 'Something went wrong. Please try again.',
       };
     }
     return data as T;
-  } catch {
-    return { ok: false, error: 'network', message: 'Cannot reach the server. Is the backend running?' };
+  } catch (err) {
+    if ((err as any)?.name === 'AbortError') throw err;
+    return NETWORK_ERROR;
   }
 }
 
-export const requestOtp = (identifier: string) =>
-  post<RequestOtpOk>('/api/auth/request-otp', { identifier });
+// ───────────────────────── endpoints ─────────────────────────
+
+export const requestOtp = (identifier: string, meta: { formElapsedMs: number; company: string }) =>
+  apiPost<RequestOtpOk>('/api/auth/request-otp', { identifier, ...meta });
 
 export const verifyOtp = (identifier: string, otp: string) =>
-  post<VerifyOtpOk>('/api/auth/verify-otp', { identifier, otp });
+  apiPost<SessionOk>('/api/auth/verify-otp', { identifier, otp });
 
 export const googleSignIn = (credential: string) =>
-  post<VerifyOtpOk>('/api/auth/google', { credential });
+  apiPost<SessionOk>('/api/auth/google', { credential });
 
-export async function logout() {
-  await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
-  clearToken();
-}
+export const refreshSession = (signal?: AbortSignal) =>
+  apiPost<SessionOk>('/api/auth/refresh', {}, signal);
 
-export async function validateSession(): Promise<boolean> {
-  if (!getToken()) return false;
-  try {
-    const res = await fetch('/api/auth/session', { headers: authHeaders() });
-    if (!res.ok) { clearToken(); return false; }
-    return true;
-  } catch {
-    return false;
-  }
-}
+export const logout = () => apiPost<{ ok: true }>('/api/auth/logout');
+
+export type SessionInfo = {
+  ok: true;
+  session: { identifier: string; channel: Channel; expiresAt: number };
+};
+
+export const fetchSession = (signal?: AbortSignal) => apiGet<SessionInfo>('/api/auth/session', signal);
+
+export { isAuthError };
 
 // ───────────────────────── validation ─────────────────────────
 
@@ -99,25 +146,4 @@ export function validateEmail(raw: string): { ok: boolean; reason?: string } {
   if (e.length > 254) return { ok: false, reason: 'Email address is too long.' };
   if (!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(e)) return { ok: false, reason: 'Enter a valid email address.' };
   return { ok: true };
-}
-
-/** Indian mobile: 10 digits starting 6-9. */
-export function validateMobileFormat(raw: string): { ok: boolean; reason?: string } {
-  const d = raw.replace(/\D/g, '');
-  const local = d.startsWith('91') && d.length === 12 ? d.slice(2)
-    : d.startsWith('0') && d.length === 11 ? d.slice(1) : d;
-  if (!local) return { ok: false, reason: 'Enter your mobile number.' };
-  if (local.length !== 10) return { ok: false, reason: 'Mobile number must be 10 digits.' };
-  if (!/^[6-9]/.test(local)) return { ok: false, reason: 'Indian mobile numbers start with 6, 7, 8 or 9.' };
-  return { ok: true };
-}
-
-/** 9876543210 → "98765 43210" */
-export function formatMobile(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 10);
-  return d.length > 5 ? `${d.slice(0, 5)} ${d.slice(5)}` : d;
-}
-
-export function validateIdentifier(value: string, channel: Channel) {
-  return channel === 'email' ? validateEmail(value) : validateMobileFormat(value);
 }

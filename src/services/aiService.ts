@@ -1,20 +1,15 @@
 // AI calls go through the backend (server/index.ts) — no API key in the browser.
-import { authHeaders } from './authService';
+// Auth rides on the httpOnly session cookie; apiPost attaches the CSRF header.
+import { apiPost, isAuthError } from './authService';
 
 async function post<T>(path: string, body: unknown, fallback: T): Promise<T> {
   try {
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(body),
-    });
-    if (res.status === 429) {
-      const data = await res.json().catch(() => ({}));
-      console.warn('AI rate limited:', data.message);
+    const res = await apiPost<T>(path, body);
+    if (isAuthError(res)) {
+      console.warn(`AI request degraded (${path}):`, res.error);
       return fallback;
     }
-    if (!res.ok) throw new Error(`API ${path} responded ${res.status}`);
-    return (await res.json()) as T;
+    return res;
   } catch (error) {
     console.error(`AI request failed (${path}):`, error);
     return fallback;

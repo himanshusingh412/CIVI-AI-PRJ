@@ -1,80 +1,62 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  MessageSquare, 
-  LayoutDashboard, 
-  Search, 
-  MapPin, 
-  Droplet, 
-  Zap, 
-  Trash2, 
-  ShieldAlert, 
-  Bell, 
-  User, 
+import {
+  MessageSquare,
+  LayoutDashboard,
+  Search,
+  MapPin,
+  Droplet,
+  Zap,
+  Trash2,
+  ShieldAlert,
+  Bell,
   ArrowRight,
   Mic,
   Send,
   CheckCircle2,
   Clock,
-  ExternalLink,
   ChevronRight,
   AlertTriangle,
   History,
   Download,
-  Filter,
-  Users,
   TrendingUp,
-  FileText,
   Moon,
   Sun,
   Camera,
   Star,
   LogOut,
-  Info,
-  Smartphone,
-  Mail,
   ShieldCheck,
   Award,
   Stars,
   Activity,
   X,
-  Phone,
   Locate,
   Briefcase,
-  Sparkles,
-  Gauge
+  Gauge,
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   LineChart,
   Line,
   Cell,
-  Legend,
-  PieChart,
-  Pie
 } from 'recharts';
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Popup, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Complaint, ViewType, LangType, ChatMessage, SystemNotification } from './types';
-import {
-  requestOtp,
-  verifyOtp,
-  googleSignIn,
-  logout,
-  validateSession,
-  setToken,
-  validateIdentifier,
-  formatMobile,
-  type AuthError,
-  type Channel,
-} from './services/authService';
+import { useAuth } from './context/AuthContext';
+import { useTheme } from './context/ThemeContext';
+import { LoginScreen } from './components/LoginScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { Button } from './components/Button';
 import { sendChat, getBrowserLocation, type ChatTurn } from './services/chatService';
+import { OFFICERS, RESPONSES } from './constants';
+import { analyzeComplaint, generateResponseTemplates } from './services/aiService';
 
 type LivePin = {
   id: string;
@@ -85,8 +67,39 @@ type LivePin = {
   category: string;
   priority: string;
 };
-import { OFFICERS, RESPONSES } from './constants';
-import { analyzeComplaint, generateResponseTemplates } from './services/aiService';
+
+type OfficerStats = {
+  name: string;
+  ward: string;
+  count: number;
+  solved: number;
+  pending: number;
+  rating: number;
+};
+
+/** Shown while the session is being restored, so protected UI never flashes. */
+function AppBootSplash() {
+  return (
+    <div
+      className="min-h-screen w-full grid place-items-center"
+      style={{ background: 'var(--color-bg-main)' }}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl grid place-items-center text-white bg-gradient-to-br from-cta to-saffron shadow-lg">
+          <ShieldCheck size={24} aria-hidden="true" />
+        </div>
+        <span
+          aria-hidden="true"
+          className="w-5 h-5 border-2 rounded-full animate-spin"
+          style={{ borderColor: 'var(--color-border-strong)', borderTopColor: 'var(--color-cta)' }}
+        />
+        <span className="text-sm font-semibold text-content-3">Restoring your session…</span>
+      </div>
+    </div>
+  );
+}
 
 // Fix Leaflet icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -95,6 +108,11 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
+
+/** Must mirror LIMITS.MAX_HISTORY_MESSAGES in server/limits.ts. */
+const MAX_CHAT_HISTORY = 12;
+/** Guard against pathological paste — server clamps too, this is just UX. */
+const MAX_MESSAGE_CHARS = 2000;
 
 const SLA_LIMITS: Record<string, number> = {
   '💧 Water Supply': 24 * 3600 * 1000, // 1 day
@@ -155,26 +173,13 @@ export default function App() {
   const [aiSuggestedCategory, setAiSuggestedCategory] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<Complaint | null>(null);
   const [suggestedResponses, setSuggestedResponses] = useState<string[]>([]);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
   const [showFeedbackModal, setShowFeedbackModal] = useState<Complaint | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [loginStep, setLoginStep] = useState<'identify' | 'otp'>('identify');
-  const [channel, setChannel] = useState<Channel>('phone');
-  const [identifier, setIdentifier] = useState('');
-  const [otpValue, setOtpValue] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [authInfo, setAuthInfo] = useState<string | null>(null);
-  const [authBusy, setAuthBusy] = useState(false);
-  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
-  const [resendIn, setResendIn] = useState(0);
-  const [lockedFor, setLockedFor] = useState(0);
-  const [maskedIdentifier, setMaskedIdentifier] = useState('');
-  const [rtiMode, setRtiMode] = useState(false);
   const [trackSearched, setTrackSearched] = useState(false);
-  const [selectedOfficer, setSelectedOfficer] = useState<{ name: string; ward: string; count: number; solved: number; pending: number; rating: number } | null>(null);
+  const [selectedOfficer, setSelectedOfficer] = useState<OfficerStats | null>(null);
   const [mapFlyTarget, setMapFlyTarget] = useState<{ lat: number; lng: number } | null>(null);
   // AI chat + live map
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
@@ -183,33 +188,52 @@ export default function App() {
   const [showLiveMap, setShowLiveMap] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [aiProvider, setAiProvider] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
-  const googleBtnRef = useRef<HTMLDivElement>(null);
-  const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '';
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  /** Every pending bot timeout, so they can be cancelled on unmount. */
+  const botTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const { status, user, onSignedIn, signOut, signingOut } = useAuth();
+  const { isDark: isDarkMode, toggleTheme } = useTheme();
+  const isAuthenticated = status === 'authenticated';
+
+  const handleSignedIn = useCallback((u: { identifier: string; channel: 'email' | 'google' }) => {
+    onSignedIn(u);
+    setShowOnboarding(true);
+  }, [onSignedIn]);
+
+  // Clear every scheduled bot reply on unmount — otherwise each timeout
+  // fires setState on an unmounted tree (a real leak in the old code).
+  useEffect(() => {
+    const timers = botTimers.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   // Auto-escalation checker
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setComplaints(prev => prev.map(c => {
-        if (c.status !== 'Resolved' && !c.escalated && now > c.deadline) {
-          return { ...c, escalated: true, priority: 'Critical' };
-        }
-        return c;
-      }));
-    }, 60000); // Check every minute
+      setComplaints(prev => {
+        // Only produce a new array when something actually changed, so this
+        // timer doesn't re-render the whole dashboard once a minute.
+        let changed = false;
+        const next = prev.map(c => {
+          if (c.status !== 'Resolved' && !c.escalated && now > c.deadline) {
+            changed = true;
+            return { ...c, escalated: true, priority: 'Critical' as const };
+          }
+          return c;
+        });
+        return changed ? next : prev;
+      });
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
-
-  // Initialize Dark Mode
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDarkMode]);
 
   // Initial notifications
   useEffect(() => {
@@ -219,17 +243,25 @@ export default function App() {
     ]);
   }, []);
 
-  // Fetch AI Responses when a complaint is selected
+  // Fetch AI response templates when a complaint is selected.
+  // `cancelled` prevents a slow response for complaint A from overwriting
+  // the templates of complaint B if the user switches quickly.
   useEffect(() => {
-    if (selectedComplaint) {
-      const fetchTemplates = async () => {
-        const templates = await generateResponseTemplates(selectedComplaint);
-        setSuggestedResponses(templates);
-      };
-      fetchTemplates();
-    } else {
+    if (!selectedComplaint) {
       setSuggestedResponses([]);
+      setLoadingTemplates(false);
+      return;
     }
+
+    let cancelled = false;
+    setLoadingTemplates(true);
+    setSuggestedResponses([]);
+
+    generateResponseTemplates(selectedComplaint)
+      .then(templates => { if (!cancelled) setSuggestedResponses(templates); })
+      .finally(() => { if (!cancelled) setLoadingTemplates(false); });
+
+    return () => { cancelled = true; };
   }, [selectedComplaint]);
 
   // Initialize with seed data
@@ -249,148 +281,59 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Restore an existing session on load
-  useEffect(() => {
-    validateSession().then(valid => { if (valid) setIsAuthenticated(true); });
-  }, []);
-
   // Ask for GPS once the citizen is signed in — improves map accuracy
   useEffect(() => {
     if (!isAuthenticated) return;
     getBrowserLocation().then(coords => { if (coords) setUserCoords(coords); });
   }, [isAuthenticated]);
 
-  // Resend-OTP cooldown ticker
-  useEffect(() => {
-    if (resendIn <= 0) return;
-    const t = setInterval(() => setResendIn(s => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(t);
-  }, [resendIn]);
-
-  // Lockout ticker
-  useEffect(() => {
-    if (lockedFor <= 0) return;
-    const t = setInterval(() => setLockedFor(s => {
-      const next = Math.max(0, s - 1);
-      if (next === 0) setAuthError(null);
-      return next;
-    }), 1000);
-    return () => clearInterval(t);
-  }, [lockedFor]);
-
-  const handleRequestOtp = async () => {
-    setAuthError(null); setAuthInfo(null);
-
-    const check = validateIdentifier(identifier, channel);
-    if (!check.ok) { setAuthError(check.reason!); return; }
-
-    setAuthBusy(true);
-    const res = await requestOtp(identifier);
-    setAuthBusy(false);
-
-    if (!('ok' in res) || res.ok !== true) {
-      const err = res as AuthError;
-      setAuthError(err.message);
-      if (err.retryAfterSec) {
-        if (err.error === 'locked_out' || err.error === 'otp_limit') setLockedFor(err.retryAfterSec);
-        else setResendIn(err.retryAfterSec);
-      }
-      return;
-    }
-
-    setMaskedIdentifier(res.maskedIdentifier);
-    setLoginStep('otp');
-    const code = res.devOtp || '123456';
-    setOtpValue(code);
-    setAttemptsLeft(null);
-    setResendIn(30);
-    setAuthInfo(
-      res.devOtp
-        ? `Demo Mode · Code auto-filled: ${res.devOtp}`
-        : `A 6-digit code was sent by ${res.channel === 'email' ? 'email' : 'SMS'} to ${res.maskedIdentifier}`
-    );
-  };
-
-  const handleVerifyOtp = async () => {
-    setAuthError(null);
-    if (!/^\d{6}$/.test(otpValue)) { setAuthError('Enter the 6-digit code.'); return; }
-
-    setAuthBusy(true);
-    const res = await verifyOtp(identifier, otpValue);
-    setAuthBusy(false);
-
-    if (!('ok' in res) || res.ok !== true) {
-      const err = res as AuthError;
-      setAuthError(err.message);
-      if (typeof err.attemptsRemaining === 'number') setAttemptsLeft(err.attemptsRemaining);
-      if (err.error === 'locked_out' && err.retryAfterSec) {
-        setLockedFor(err.retryAfterSec);
-        setLoginStep('identify');
-        setAttemptsLeft(null);
-      }
-      if (err.error === 'expired') { setLoginStep('identify'); setAttemptsLeft(null); }
-      setOtpValue('');
-      return;
-    }
-
-    setToken(res.token);
-    setIsAuthenticated(true);
-    setAuthError(null); setAuthInfo(null); setAttemptsLeft(null);
-    setOtpValue(''); setIdentifier('');
-    showToast('Login successful!');
-    setShowOnboarding(true);
-  };
-
-  const handleGoogleCredential = async (response: { credential?: string }) => {
-    if (!response?.credential) return;
-    setAuthError(null); setAuthInfo(null); setAuthBusy(true);
-    const res = await googleSignIn(response.credential);
-    setAuthBusy(false);
-
-    if (!('ok' in res) || res.ok !== true) {
-      const err = res as AuthError;
-      setAuthError(err.message);
-      return;
-    }
-
-    setToken(res.token);
-    setIsAuthenticated(true);
-    setAuthError(null); setAuthInfo(null); setAttemptsLeft(null);
-    setOtpValue(''); setIdentifier('');
-    showToast('Signed in with Google!');
-    setShowOnboarding(true);
-  };
-
-  // Render the Google Identity Services button once the script is loaded — only while signing in.
-  useEffect(() => {
-    if (isAuthenticated || loginStep !== 'identify' || !GOOGLE_CLIENT_ID) return;
-
-    let cancelled = false;
-    const tryRender = () => {
-      if (cancelled) return;
-      const g = (window as any).google;
-      if (!g?.accounts?.id || !googleBtnRef.current) {
-        setTimeout(tryRender, 200);
-        return;
-      }
-      g.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
-      googleBtnRef.current.innerHTML = '';
-      g.accounts.id.renderButton(googleBtnRef.current, {
-        theme: 'outline', size: 'large', width: 344, text: 'continue_with', shape: 'pill',
-      });
-    };
-    tryRender();
-    return () => { cancelled = true; };
-  }, [isAuthenticated, loginStep, GOOGLE_CLIENT_ID]);
-
   const handleLogout = async () => {
-    await logout();
-    setIsAuthenticated(false);
-    setLoginStep('identify');
-    setIdentifier(''); setOtpValue('');
-    setAuthError(null); setAuthInfo(null); setAttemptsLeft(null);
+    await signOut();
     showToast('Signed out securely.');
   };
+
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+
+  /**
+   * Recharts renders to SVG and cannot read CSS classes, so chart colors must
+   * be passed as real values. Deriving them from the theme tokens keeps the
+   * charts readable in dark mode instead of near-invisible hardcoded greys.
+   */
+  const chart = useMemo(() => {
+    const palette = isDarkMode
+      ? { series: ['#38BDF8', '#FB923C', '#4ADE80', '#A78BFA', '#FBBF24'], grid: '#1E293B', axis: '#94A3B8', surface: '#111827', content: '#F1F5F9' }
+      : { series: ['#0369A1', '#C2410C', '#15803D', '#7C3AED', '#B45309'], grid: '#E2E8F0', axis: '#64748B', surface: '#FFFFFF', content: '#0F172A' };
+    return {
+      ...palette,
+      tooltip: {
+        borderRadius: '12px',
+        border: `1px solid ${palette.grid}`,
+        background: palette.surface,
+        color: palette.content,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+      } as React.CSSProperties,
+    };
+  }, [isDarkMode]);
+
+  // Dismiss the notifications dropdown on Escape or an outside click —
+  // it previously stayed open and trapped nothing, which is a keyboard trap.
+  useEffect(() => {
+    if (!showNotifications) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowNotifications(false);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (!notificationsRef.current?.contains(e.target as Node)) setShowNotifications(false);
+    };
+
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [showNotifications]);
 
   const markNotificationRead = (id: string) =>
     setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
@@ -422,10 +365,14 @@ export default function App() {
     }
   };
 
-  const showToast = (msg: string) => {
+  /** Single-slot toast. Re-firing resets the timer instead of stacking them. */
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }, []);
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   const generateID = () => {
     const d = new Date();
@@ -436,35 +383,40 @@ export default function App() {
     return `CIV-${ymd}-${seq}`;
   };
 
-  const botReply = (content: string, delay = 800) => {
+  /** Schedules a bot message. The timer is tracked so unmount can cancel it. */
+  const botReply = useCallback((content: string, delay = 800) => {
     setIsTyping(true);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      botTimers.current.delete(timer);
       setIsTyping(false);
       setMessages(prev => [...prev, {
-        id: Date.now().toString(),
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         content,
         type: 'bot',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
     }, delay);
-  };
+    botTimers.current.add(timer);
+  }, []);
 
-  const handleSendMessage = (text: string) => {
-    if (!text.trim()) return;
-    if (text.length > 2000) {
-      showToast('Message too long — please keep it under 2000 characters.');
+  const handleSendMessage = (raw: string) => {
+    const text = raw.trim();
+    if (!text) return;
+    if (text.length > MAX_MESSAGE_CHARS) {
+      showToast(`Message too long — please keep it under ${MAX_MESSAGE_CHARS} characters.`);
       return;
     }
+    setChatInput('');
 
     const userMsg: ChatMessage = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       content: text,
       type: 'user',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMsg]);
-    setChatHistory(prev => [...prev, { role: 'user', content: text }].slice(-12));
+    setChatHistory(prev => [...prev, { role: 'user' as const, content: text }].slice(-MAX_CHAT_HISTORY));
     processUserInput(text);
   };
 
@@ -474,7 +426,7 @@ export default function App() {
     const res = await sendChat(text, chatHistory, userCoords);
     setIsTyping(false);
 
-    setChatHistory(prev => [...prev, { role: 'assistant', content: res.reply }].slice(-12));
+    setChatHistory(prev => [...prev, { role: 'assistant' as const, content: res.reply }].slice(-MAX_CHAT_HISTORY));
     setAiProvider(res.provider ?? null);
 
     if (res.location) {
@@ -517,16 +469,34 @@ export default function App() {
     }
   };
 
+  const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+  const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPendingComplaint(prev => ({ ...prev, photoUrl: reader.result as string }));
-        botReply("📸 Photo attached! Now, let's finalize the category.");
-      };
-      reader.readAsDataURL(file);
+    // Reset immediately so re-selecting the same file still fires onChange.
+    e.target.value = '';
+    if (!file) return;
+
+    // Validate before reading — the old version accepted any file of any size
+    // and base64'd it straight into React state.
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      showToast('Please choose a PNG, JPEG or WebP image.');
+      return;
     }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showToast('Image is too large — maximum size is 5 MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => showToast('Could not read that image. Please try another file.');
+    reader.onloadend = () => {
+      if (typeof reader.result !== 'string') return;
+      setPendingComplaint(prev => ({ ...prev, photoUrl: reader.result as string }));
+      botReply("📸 Photo attached! Now, let's finalize the category.");
+    };
+    reader.readAsDataURL(file);
   };
 
   const processUserInput = async (text: string) => {
@@ -542,7 +512,6 @@ export default function App() {
 
     // RTI Flow
     if (lower.includes('rti') || lower.includes('right to information') || lower.includes('सूचना का अधिकार')) {
-      setRtiMode(true);
       setChatStep('rti_subject');
       botReply("Starting RTI request flow. What is the subject of your information request?");
       return;
@@ -556,7 +525,6 @@ export default function App() {
 
     if (chatStep === 'rti_dept') {
       setChatStep(null);
-      setRtiMode(false);
       const rtiId = `RTI-${Date.now().toString().slice(-6)}`;
       botReply(`✅ RTI Request Filed!\n\nReference ID: ${rtiId}\n\nUnder the RTI Act 2005, you will receive a response within 30 days.`);
       showToast("RTI request submitted!");
@@ -708,23 +676,55 @@ export default function App() {
     }
   };
 
+  const recognitionRef = useRef<any>(null);
+
   const startListening = () => {
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!SpeechRecognition) {
-      showToast("Speech recognition not supported");
+    // Toggle off if already listening — previously there was no way to stop.
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
       return;
     }
-    const recognition = new SpeechRecognition();
-    recognition.lang = lang === 'en' ? 'en-US' : 'hi-IN';
-    recognition.start();
-    setIsListening(true);
-    recognition.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      if (chatInputRef.current) chatInputRef.current.value = transcript;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast('Voice input is not supported in this browser.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = lang === 'en' ? 'en-US' : 'hi-IN';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (e: any) => {
+        const transcript = e.results?.[0]?.[0]?.transcript ?? '';
+        // Write to state, not the DOM node — the textarea is controlled now,
+        // so a direct .value assignment was being discarded on next render.
+        if (transcript) setChatInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+      };
+      recognition.onerror = (e: any) => {
+        setIsListening(false);
+        if (e?.error === 'not-allowed') showToast('Microphone permission denied.');
+        else if (e?.error !== 'aborted') showToast('Voice input failed. Please try again.');
+      };
+      recognition.onend = () => setIsListening(false);
+
+      recognition.start();
+      setIsListening(true);
+    } catch {
       setIsListening(false);
-    };
-    recognition.onerror = () => setIsListening(false);
+      showToast('Could not start voice input.');
+    }
   };
+
+  // Stop any live recognition when the component unmounts.
+  useEffect(() => () => {
+    try { recognitionRef.current?.abort?.(); } catch { /* already stopped */ }
+  }, []);
 
   const stats = {
     total: complaints.length,
@@ -795,389 +795,143 @@ export default function App() {
     showToast("Exporting CSV...");
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen w-full bg-[#0F172A] flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
-        {/* Ambient depth — decorative only, hidden from assistive tech */}
-        <div aria-hidden="true" className="aurora-bg opacity-40">
-          <div className="aurora-blob absolute -top-[15%] -left-[10%] w-[45%] h-[45%] bg-[#0369A1]" />
-          <div className="aurora-blob absolute -bottom-[15%] -right-[10%] w-[45%] h-[45%] bg-[#C2410C]" style={{ animationDelay: '5s' }} />
-          <div className="aurora-blob absolute top-[40%] left-[60%] w-[30%] h-[30%] bg-[#7C3AED]" style={{ animationDelay: '9s' }} />
-        </div>
+  if (status === 'loading') return <AppBootSplash />;
 
-        <TiltCard maxTilt={4} className="w-full max-w-md">
-        <motion.main
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-          className="bg-white rounded-2xl p-7 sm:p-9 w-full shadow-2xl relative z-10 border border-white/10 glow-navy"
-        >
-          <header className="text-center mb-7">
-            <div aria-hidden="true" className="float-y w-14 h-14 bg-gradient-to-br from-navy via-navy-light to-cta rounded-xl flex items-center justify-center mx-auto mb-4 text-white shadow-lg">
-              <ShieldCheck size={28} strokeWidth={2} />
-            </div>
-            <h1 className="font-display font-bold text-2xl text-[#0F172A] tracking-tight">
-              Sign in to CivicAI
-            </h1>
-            <p className="text-[#475569] text-sm mt-1.5">
-              {loginStep === 'identify'
-                ? 'Sign in with your email or mobile number'
-                : `Enter the code we sent by ${channel === 'email' ? 'email' : 'SMS'}`}
-            </p>
-          </header>
-
-          {/* Step indicator */}
-          <ol className="flex items-center gap-2 mb-6" aria-label="Sign-in progress">
-            <li className="flex-1 flex items-center gap-2">
-              <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold shrink-0 ${
-                loginStep === 'identify' ? 'bg-[#0369A1] text-white' : 'bg-[#15803D] text-white'
-              }`}>
-                {loginStep === 'identify' ? '1' : <CheckCircle2 size={13} strokeWidth={3} />}
-              </span>
-              <span className={`h-1 flex-1 rounded-full ${loginStep === 'otp' ? 'bg-[#15803D]' : 'bg-[#E2E8F0]'}`} />
-            </li>
-            <li className="flex items-center gap-2">
-              <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold ${
-                loginStep === 'otp' ? 'bg-[#0369A1] text-white' : 'bg-[#E2E8F0] text-[#475569]'
-              }`}>2</span>
-            </li>
-          </ol>
-
-          {/* Live region so screen readers announce errors and status */}
-          <div aria-live="polite" aria-atomic="true">
-            {authError && (
-              <div role="alert" className="flex items-start gap-2.5 p-3.5 bg-[#FEF2F2] border border-[#FCA5A5] rounded-xl mb-5">
-                <AlertTriangle size={16} className="text-[#B91C1C] mt-0.5 shrink-0" aria-hidden="true" />
-                <p className="text-[13px] font-semibold text-[#B91C1C]">
-                  {authError}
-                  {lockedFor > 0 && (
-                    <span className="block mt-1 font-mono text-xs font-bold">
-                      Unlocks in {Math.floor(lockedFor / 60)}:{String(lockedFor % 60).padStart(2, '0')}
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
-            {authInfo && !authError && (
-              <div role="status" className="flex items-start gap-2.5 p-3.5 bg-[#F0FDF4] border border-[#86EFAC] rounded-xl mb-5">
-                <CheckCircle2 size={16} className="text-[#15803D] mt-0.5 shrink-0" aria-hidden="true" />
-                <p className="text-[13px] font-semibold text-[#15803D]">{authInfo}</p>
-              </div>
-            )}
-          </div>
-
-          {loginStep === 'identify' ? (
-            <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); handleRequestOtp(); }}>
-              {/* Channel toggle */}
-              <div role="tablist" aria-label="Sign-in method" className="grid grid-cols-2 gap-1 p-1 bg-[#F1F5F9] rounded-xl">
-                {([
-                  { key: 'phone' as Channel, label: 'Mobile', Icon: Smartphone },
-                  { key: 'email' as Channel, label: 'Email', Icon: Mail },
-                ]).map(({ key, label, Icon }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    role="tab"
-                    aria-selected={channel === key}
-                    disabled={authBusy || lockedFor > 0}
-                    onClick={() => { setChannel(key); setIdentifier(''); setAuthError(null); setAuthInfo(null); }}
-                    className={`h-10 rounded-lg text-[14px] font-semibold flex items-center justify-center gap-2 ${
-                      channel === key
-                        ? 'bg-white text-[#0F172A] shadow-sm'
-                        : 'text-[#475569] hover:text-[#0F172A]'
-                    }`}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {channel === 'phone' ? (
-                <div>
-                  <label htmlFor="identifier" className="block text-[13px] font-semibold text-[#0F172A] mb-1.5">
-                    Mobile number
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569] text-[15px] font-semibold pointer-events-none">
-                      +91
-                    </span>
-                    <input
-                      id="identifier"
-                      name="identifier"
-                      type="tel"
-                      inputMode="numeric"
-                      autoComplete="tel-national"
-                      maxLength={11}
-                      required
-                      autoFocus
-                      aria-describedby="identifier-hint"
-                      aria-invalid={!!authError}
-                      disabled={authBusy || lockedFor > 0}
-                      placeholder="98765 43210"
-                      value={identifier}
-                      onChange={(e) => { setIdentifier(formatMobile(e.target.value)); setAuthError(null); }}
-                      className="w-full h-12 pl-14 pr-4 bg-white border-2 border-[#CBD5E1] rounded-xl outline-none text-base tracking-[0.06em] font-mono text-[#0F172A] placeholder:text-[#94A3B8] hover:border-[#94A3B8] focus:border-[#0369A1] disabled:bg-[#F1F5F9] disabled:opacity-60"
-                    />
-                  </div>
-                  <p id="identifier-hint" className="text-xs text-[#475569] mt-1.5">
-                    We'll text a 6-digit code to this number
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <label htmlFor="identifier" className="block text-[13px] font-semibold text-[#0F172A] mb-1.5">
-                    Email address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569]" size={18} aria-hidden="true" />
-                    <input
-                      id="identifier"
-                      name="identifier"
-                      type="email"
-                      inputMode="email"
-                      autoComplete="email"
-                      maxLength={254}
-                      required
-                      autoFocus
-                      aria-describedby="identifier-hint"
-                      aria-invalid={!!authError}
-                      disabled={authBusy || lockedFor > 0}
-                      placeholder="you@example.com"
-                      value={identifier}
-                      onChange={(e) => { setIdentifier(e.target.value); setAuthError(null); }}
-                      className="w-full h-12 pl-11 pr-4 bg-white border-2 border-[#CBD5E1] rounded-xl outline-none text-base text-[#0F172A] placeholder:text-[#94A3B8] hover:border-[#94A3B8] focus:border-[#0369A1] disabled:bg-[#F1F5F9] disabled:opacity-60"
-                    />
-                  </div>
-                  <p id="identifier-hint" className="text-xs text-[#475569] mt-1.5">
-                    We'll email a 6-digit code to this address
-                  </p>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={authBusy || lockedFor > 0 || !validateIdentifier(identifier, channel).ok}
-                className="btn-sheen w-full h-12 bg-gradient-to-r from-[#0369A1] to-[#0284C7] text-white rounded-xl font-semibold text-[15px] hover:shadow-lg hover:shadow-[#0369A1]/30 active:scale-[0.99] flex items-center justify-center gap-2 disabled:bg-[#94A3B8] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
-              >
-                {authBusy ? (
-                  <>
-                    <span aria-hidden="true" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Sending code…
-                  </>
-                ) : lockedFor > 0 ? 'Temporarily locked' : (
-                  <>Send code <ChevronRight size={18} aria-hidden="true" /></>
-                )}
-              </button>
-
-              <p className="text-xs text-[#475569] text-center">
-                Limits: 5 codes per 15 minutes · 9 verification attempts
-              </p>
-            </form>
-          ) : (
-            <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); handleVerifyOtp(); }}>
-              {/* Prominent Demo OTP display box */}
-              <div className="p-3.5 bg-amber-50/90 border border-amber-300/80 rounded-xl text-center shadow-xs">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-1">Your Verification Code</p>
-                <div className="text-2xl font-black font-mono text-amber-950 tracking-[0.25em] select-all my-0.5">
-                  {otpValue || '123456'}
-                </div>
-                <p className="text-[11px] text-amber-700 font-medium">Auto-filled for instant sign-in (or enter any 6 digits)</p>
-              </div>
-
-              <div>
-                <label htmlFor="otp" className="block text-[13px] font-semibold text-[#0F172A] mb-1.5">
-                  6-digit code
-                </label>
-                <div className="relative">
-                  {channel === 'email'
-                    ? <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569]" size={18} aria-hidden="true" />
-                    : <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569]" size={18} aria-hidden="true" />}
-                  <input
-                    id="otp"
-                    name="otp"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    required
-                    autoFocus
-                    aria-describedby="otp-hint"
-                    aria-invalid={!!authError}
-                    disabled={authBusy}
-                    placeholder="000000"
-                    value={otpValue}
-                    onChange={(e) => { setOtpValue(e.target.value.replace(/\D/g, '').slice(0, 6)); setAuthError(null); }}
-                    className="w-full h-14 pl-11 pr-4 bg-white border-2 border-[#CBD5E1] rounded-xl outline-none text-2xl tracking-[0.5em] font-bold font-mono text-center text-[#0F172A] placeholder:text-[#CBD5E1] hover:border-[#94A3B8] focus:border-[#0369A1] disabled:bg-[#F1F5F9] disabled:opacity-60"
-                  />
-                </div>
-                <p id="otp-hint" className="text-xs text-[#475569] mt-1.5 text-center">
-                  Sent to <span className="font-mono font-semibold text-[#0F172A]">{maskedIdentifier}</span> · valid 5 minutes
-                </p>
-              </div>
-
-              {attemptsLeft !== null && attemptsLeft > 0 && (
-                <div className="flex flex-col items-center gap-2" role="status">
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: 9 }).map((_, i) => (
-                      <span
-                        key={i}
-                        aria-hidden="true"
-                        className={`h-1.5 w-4 rounded-full ${i < attemptsLeft ? 'bg-[#15803D]' : 'bg-[#FCA5A5]'}`}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs font-semibold text-[#475569]">
-                    {attemptsLeft} of 9 attempts left
-                  </span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={authBusy || otpValue.length !== 6}
-                className="btn-sheen w-full h-12 bg-gradient-to-r from-[#0369A1] to-[#0284C7] text-white rounded-xl font-semibold text-[15px] hover:shadow-lg hover:shadow-[#0369A1]/30 active:scale-[0.99] flex items-center justify-center gap-2 disabled:bg-[#94A3B8] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
-              >
-                {authBusy ? (
-                  <>
-                    <span aria-hidden="true" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Verifying…
-                  </>
-                ) : (
-                  <>Verify and continue <ChevronRight size={18} aria-hidden="true" /></>
-                )}
-              </button>
-
-              <div className="flex items-center justify-center gap-4 pt-1">
-                <button
-                  type="button"
-                  onClick={handleRequestOtp}
-                  disabled={authBusy || resendIn > 0}
-                  className="text-[13px] font-semibold text-[#0369A1] hover:text-[#075985] hover:underline disabled:text-[#94A3B8] disabled:no-underline disabled:cursor-not-allowed"
-                >
-                  {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
-                </button>
-                <span aria-hidden="true" className="text-[#CBD5E1]">|</span>
-                <button
-                  type="button"
-                  onClick={() => { setLoginStep('identify'); setOtpValue(''); setAuthError(null); setAuthInfo(null); setAttemptsLeft(null); }}
-                  className="text-[13px] font-semibold text-[#475569] hover:text-[#0F172A] hover:underline"
-                >
-                  {channel === 'email' ? 'Change email' : 'Change number'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {loginStep === 'identify' && GOOGLE_CLIENT_ID && (
-            <>
-              <div className="flex items-center gap-3 my-5" aria-hidden="true">
-                <span className="h-px flex-1 bg-[#E2E8F0]" />
-                <span className="text-[11px] font-bold text-[#94A3B8] uppercase tracking-widest">or</span>
-                <span className="h-px flex-1 bg-[#E2E8F0]" />
-              </div>
-              <div ref={googleBtnRef} className="flex justify-center [&>div]:!w-full" />
-            </>
-          )}
-
-          <footer className="flex items-center gap-2 justify-center mt-7 pt-5 border-t border-[#E2E8F0]">
-            <ShieldCheck size={14} className="text-[#15803D]" aria-hidden="true" />
-            <span className="text-xs font-semibold text-[#475569]">
-              Government-verified · Codes are hashed, never stored in plain text
-            </span>
-          </footer>
-        </motion.main>
-        </TiltCard>
-      </div>
-    );
+  if (status !== 'authenticated') {
+    return <LoginScreen onSignedIn={handleSignedIn} />;
   }
 
   return (
-    <div className="relative flex flex-col h-screen overflow-hidden bg-gray-50 text-navy transition-colors duration-300 dark:bg-[#0a0f1d] dark:text-[#f8f9fc]">
+    <div
+      className="relative flex flex-col h-screen overflow-hidden transition-colors duration-300"
+      style={{ background: 'var(--color-bg-main)', color: 'var(--color-content)' }}
+    >
       <a href="#main-content" className="skip-link">Skip to main content</a>
 
       {/* Ambient premium depth — dark mode only, decorative */}
       {isDarkMode && (
         <div aria-hidden="true" className="aurora-bg fixed inset-0 z-0">
-          <div className="aurora-blob w-[32rem] h-[32rem] bg-[#0369A1] -top-40 -left-40" />
-          <div className="aurora-blob w-[28rem] h-[28rem] bg-[#C2410C] top-1/3 -right-40" style={{ animationDelay: '4s' }} />
-          <div className="aurora-blob w-[26rem] h-[26rem] bg-[#7C3AED] bottom-0 left-1/4" style={{ animationDelay: '8s' }} />
+          <div className="aurora-blob w-[32rem] h-[32rem] bg-cta -top-40 -left-40" />
+          <div className="aurora-blob w-[28rem] h-[28rem] bg-saffron top-1/3 -right-40" style={{ animationDelay: '4s' }} />
         </div>
       )}
 
       {/* Top Navigation */}
-      <nav className="h-20 glass border-b border-gray-100 dark:border-white/5 px-8 flex items-center justify-between shrink-0 relative z-[100]">
-        <div className="flex items-center gap-4">
-          <div className="float-y w-11 h-11 bg-gradient-to-br from-navy via-navy-light to-cta dark:from-cta dark:via-sky-500 dark:to-saffron rounded-xl flex items-center justify-center text-white shadow-lg shadow-navy/30 dark:glow-navy relative" style={{ transformStyle: 'preserve-3d' }}>
-            <ShieldCheck size={24} />
+      <nav
+        className="h-20 glass border-b px-4 sm:px-8 flex items-center justify-between shrink-0 relative z-[100]"
+        style={{ borderColor: 'var(--color-border)' }}
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="float-y w-11 h-11 bg-gradient-to-br from-cta to-saffron rounded-xl flex items-center justify-center text-white shadow-lg shrink-0">
+            <ShieldCheck size={24} aria-hidden="true" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="font-display font-bold text-xl tracking-tight text-gradient-premium">CivicAI</h1>
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-              <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">New Delhi Municipal Council</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" aria-hidden="true" />
+              <span className="text-[10px] font-black uppercase text-content-3 tracking-widest truncate">
+                New Delhi Municipal Council
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="flex bg-gray-50 dark:bg-gray-800 rounded-xl p-1 border border-gray-100 dark:border-gray-700">
-            <button onClick={() => setLang('en')} className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-all ${lang === 'en' ? 'bg-white dark:bg-gray-700 text-navy shadow-sm' : 'text-gray-400 hover:text-navy'}`}>EN</button>
-            <button onClick={() => setLang('hi')} className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-all ${lang === 'hi' ? 'bg-white dark:bg-gray-700 text-navy shadow-sm' : 'text-gray-400 hover:text-navy'}`}>HI</button>
+        <div className="flex items-center gap-3 sm:gap-6">
+          <div
+            className="hidden sm:flex surface-2 rounded-xl p-1 bordered"
+            role="group"
+            aria-label="Language"
+          >
+            {(['en', 'hi'] as const).map(code => (
+              <button
+                key={code}
+                onClick={() => setLang(code)}
+                aria-pressed={lang === code}
+                className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors ${
+                  lang === code ? 'bg-cta text-white shadow-sm' : 'text-content-3 hover:text-content'
+                }`}
+              >
+                {code}
+              </button>
+            ))}
           </div>
 
-          <div className="h-6 w-px bg-gray-100 dark:bg-gray-800"></div>
+          <div className="hidden sm:block h-6 w-px" style={{ background: 'var(--color-border)' }} />
 
           <div className="flex items-center gap-4">
-            <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-10 h-10 rounded-xl border border-gray-100 dark:border-gray-800 flex items-center justify-center text-gray-400 hover:text-navy dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
-              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+            <button
+              onClick={toggleTheme}
+              aria-label={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
+              title={isDarkMode ? 'Light mode' : 'Dark mode'}
+              className="w-10 h-10 rounded-xl bordered surface-2 grid place-items-center text-content-3 hover:text-cta transition-colors"
+            >
+              {isDarkMode ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
             </button>
             
-            <div className="relative">
-              <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative w-10 h-10 rounded-xl border border-gray-100 dark:border-gray-800 flex items-center justify-center text-gray-400 hover:text-navy dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
+            <div className="relative" ref={notificationsRef}>
+              <button
+                onClick={() => setShowNotifications(v => !v)}
+                aria-haspopup="true"
+                aria-expanded={showNotifications}
+                aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+                className="relative w-10 h-10 rounded-xl bordered surface-2 grid place-items-center text-content-3 hover:text-cta transition-colors"
               >
-                <Bell size={18} />
-                {notifications.some(n => !n.read) && (
-                  <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-saffron rounded-full border-2 border-white dark:border-[#111827]"></span>
+                <Bell size={18} aria-hidden="true" />
+                {unreadCount > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-2 right-2 w-2 h-2 bg-saffron rounded-full ring-2"
+                    style={{ ['--tw-ring-color' as any]: 'var(--color-surface)' }}
+                  />
                 )}
               </button>
 
               <AnimatePresence>
                 {showNotifications && (
-                  <motion.div 
+                  <motion.div
+                    role="dialog"
+                    aria-label="Notifications"
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-2 w-80 glass-strong rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800 overflow-hidden z-[100]"
+                    className="absolute right-0 mt-2 w-80 glass-strong rounded-3xl shadow-2xl bordered overflow-hidden z-[100]"
                   >
-                    <div className="p-4 border-b border-gray-50 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-navy dark:text-gray-300">Notifications</span>
+                    <div
+                      className="p-4 flex justify-between items-center surface-2"
+                      style={{ borderBottom: '1px solid var(--color-border)' }}
+                    >
+                      <span className="text-[10px] font-black uppercase tracking-widest text-content">Notifications</span>
                       <button
                         onClick={markAllNotificationsRead}
-                        disabled={!notifications.some(n => !n.read)}
-                        className="text-[10px] font-bold text-saffron uppercase hover:underline disabled:opacity-40 disabled:no-underline"
+                        disabled={unreadCount === 0}
+                        className="text-[10px] font-bold text-saffron uppercase hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
                       >
                         Mark all read
                       </button>
                     </div>
                     <div className="max-h-[300px] overflow-auto">
                       {notifications.length === 0 ? (
-                        <p className="p-6 text-center text-[11px] text-gray-400 font-semibold">No notifications</p>
+                        <p className="p-6 text-center text-[11px] text-content-3 font-semibold">
+                          You're all caught up — no notifications yet.
+                        </p>
                       ) : notifications.map(n => (
-                        <div
+                        <button
                           key={n.id}
+                          type="button"
                           onClick={() => markNotificationRead(n.id)}
-                          className={`p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer ${!n.read ? 'bg-saffron/5' : ''}`}
+                          className="w-full text-left p-4 hover:bg-[var(--color-surface-2)] transition-colors"
+                          style={{
+                            borderBottom: '1px solid var(--color-border)',
+                            background: n.read ? undefined : 'color-mix(in srgb, var(--color-saffron) 8%, transparent)',
+                          }}
                         >
-                          <h4 className="text-xs font-bold text-navy dark:text-white flex items-center gap-2">
-                            {!n.read && <span className="w-1.5 h-1.5 bg-saffron rounded-full shrink-0" />}
+                          <h4 className="text-xs font-bold text-content flex items-center gap-2">
+                            {!n.read && <span className="w-1.5 h-1.5 bg-saffron rounded-full shrink-0" aria-hidden="true" />}
                             {n.title}
                           </h4>
-                          <p className="text-[11px] text-gray-500 mt-0.5">{n.message}</p>
-                          <span className="text-[9px] font-bold text-gray-400 mt-2 block">{n.timestamp}</span>
-                        </div>
+                          <p className="text-[11px] text-content-2 mt-0.5">{n.message}</p>
+                          <span className="text-[9px] font-bold text-content-3 mt-2 block">{n.timestamp}</span>
+                        </button>
                       ))}
                     </div>
                   </motion.div>
@@ -1185,14 +939,35 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-            <button 
+            <button
               onClick={() => setView('dashboard')}
-              className={`flex items-center gap-2 px-4 h-10 rounded-xl text-xs font-bold transition-all ${view === 'dashboard' ? 'bg-navy text-white' : 'bg-white dark:bg-transparent border border-gray-200 dark:border-gray-800 text-gray-500 hover:border-navy hover:text-navy'}`}
+              aria-current={view === 'dashboard' ? 'page' : undefined}
+              className={`hidden md:flex items-center gap-2 px-4 h-10 rounded-xl text-xs font-bold transition-colors ${
+                view === 'dashboard'
+                  ? 'bg-cta text-white shadow-sm'
+                  : 'surface-2 bordered text-content-2 hover:text-cta'
+              }`}
             >
-              <LayoutDashboard size={16} /> Dashboard
+              <LayoutDashboard size={16} aria-hidden="true" /> Dashboard
             </button>
-            <button onClick={handleLogout} title="Sign out" className="w-10 h-10 rounded-xl text-gray-300 hover:text-red-500 transition-all">
-              <LogOut size={18} />
+
+            <button
+              onClick={handleLogout}
+              disabled={signingOut}
+              title="Sign out"
+              aria-label="Sign out"
+              aria-busy={signingOut || undefined}
+              className="w-10 h-10 rounded-xl grid place-items-center text-content-3 hover:text-danger transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {signingOut ? (
+                <span
+                  aria-hidden="true"
+                  className="w-4 h-4 border-2 rounded-full animate-spin"
+                  style={{ borderColor: 'var(--color-border-strong)', borderTopColor: 'var(--color-danger)' }}
+                />
+              ) : (
+                <LogOut size={18} aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
@@ -1201,8 +976,12 @@ export default function App() {
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden relative z-10">
         {/* Sidebar */}
-        <aside className="w-[240px] glass border-r border-gray-100 dark:border-white/5 flex flex-col py-6 shrink-0">
-          <div className="px-5 mb-2 text-[10px] font-bold text-gray-400 tracking-[0.15em] uppercase">Main Menu</div>
+        <aside
+          className="hidden lg:flex w-[240px] glass border-r flex-col py-6 shrink-0 overflow-y-auto"
+          style={{ borderColor: 'var(--color-border)' }}
+          aria-label="Main navigation"
+        >
+          <div className="px-5 mb-2 text-[10px] font-bold text-content-3 tracking-[0.15em] uppercase">Main Menu</div>
           <SidebarItem 
             active={view === 'chat'} 
             onClick={() => setView('chat')} 
@@ -1229,7 +1008,7 @@ export default function App() {
             label={lang === 'en' ? 'Transparency Feed' : 'ट्रांसपेरेंसी फीड'} 
           />
 
-          <div className="px-5 mt-6 mb-2 text-[10px] font-bold text-gray-400 tracking-[0.15em] uppercase">Categories</div>
+          <div className="px-5 mt-6 mb-2 text-[10px] font-bold text-content-3 tracking-[0.15em] uppercase">Categories</div>
           <SidebarItem 
             icon={<MapPin size={18} />} 
             label={lang === 'en' ? 'Roads & Infra' : 'सड़क व ढांचा'} 
@@ -1268,7 +1047,14 @@ export default function App() {
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-hidden p-6 flex flex-col">
+        {/* id + tabIndex make the "Skip to main content" link actually work —
+            it previously pointed at a #main-content that did not exist. */}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-hidden p-4 sm:p-6 flex flex-col focus:outline-none"
+        >
+          <ErrorBoundary scope={`view:${view}`}>
           <AnimatePresence mode="wait">
             {view === 'chat' && (
               <motion.div 
@@ -1278,15 +1064,15 @@ export default function App() {
                 exit={{ opacity: 0, y: -10 }}
                 className="flex-1 flex flex-col gap-4 overflow-hidden"
               >
-                <div className="flex items-center gap-4 pb-4 border-b border-gray-100">
-                  <div className="w-12 h-12 bg-navy rounded-2xl flex items-center justify-center text-2xl shadow-md">🤖</div>
+                <div className="flex items-center gap-4 pb-4 border-b border-[var(--color-border)]">
+                  <div className="w-12 h-12 bg-cta rounded-2xl flex items-center justify-center text-2xl shadow-md">🤖</div>
                   <div className="flex-1">
                     <h2 className="font-display font-bold text-lg">{lang === 'en' ? 'CivicAI Assistant' : 'CivicAI सहायक'}</h2>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <div className="flex items-center gap-1.5 text-xs text-content-3">
                       <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                       {lang === 'en' ? 'Online • Govt. Verified System' : 'ऑनलाइन • सरकारी प्रणाली'}
                       {aiProvider && (
-                        <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[9px] font-bold uppercase tracking-wide">
+                        <span className="ml-1 px-1.5 py-0.5 rounded surface-2 text-[9px] font-bold uppercase tracking-wide">
                           {aiProvider === 'fallback' ? 'offline mode' : aiProvider}
                         </span>
                       )}
@@ -1298,8 +1084,8 @@ export default function App() {
                       onClick={() => setShowLiveMap(v => !v)}
                       className={`h-10 px-4 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all ${
                         showLiveMap
-                          ? 'bg-navy text-white border-navy'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-navy hover:border-navy'
+                          ? 'bg-cta text-white border-navy'
+                          : 'border-[var(--color-border-strong)]  text-content-2 hover:text-cta hover:border-cta'
                       }`}
                     >
                       <MapPin size={14} />
@@ -1315,7 +1101,7 @@ export default function App() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 260, opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      className={`rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 relative shrink-0 shadow-lg map-premium ${isDarkMode ? 'map-dark' : ''}`}
+                      className={`rounded-2xl overflow-hidden border border-[var(--color-border)]  relative shrink-0 shadow-lg map-premium ${isDarkMode ? 'map-dark' : ''}`}
                     >
                       <MapContainer
                         key={activePin?.id || 'live-map'}
@@ -1348,7 +1134,7 @@ export default function App() {
                               <div className="text-xs">
                                 <strong>{p.category}</strong><br />
                                 {p.label}<br />
-                                <span className="text-gray-500">
+                                <span className="text-content-2">
                                   Priority: {p.priority} · {p.confidence}
                                 </span>
                               </div>
@@ -1373,17 +1159,17 @@ export default function App() {
                           else showToast('Could not access your location');
                         }}
                         title="Locate me"
-                        className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-100 dark:border-gray-800 shadow-lg flex items-center justify-center text-navy dark:text-white hover:text-cta hover:-translate-y-0.5 transition-all"
+                        className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl glass-strong border shadow-lg flex items-center justify-center text-content hover:text-cta hover:-translate-y-0.5 transition-all"
                       >
                         <Locate size={16} />
                       </button>
 
                       {activePin && (
-                        <div className="absolute bottom-3 left-3 right-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur px-4 py-2.5 rounded-xl border border-gray-100 dark:border-gray-800 shadow-lg z-[500] flex items-center gap-3">
+                        <div className="absolute bottom-3 left-3 right-3 bg-white/95 backdrop-blur px-4 py-2.5 rounded-xl border border-[var(--color-border)] shadow-lg z-[500] flex items-center gap-3">
                           <MapPin size={15} className="text-saffron shrink-0" />
                           <div className="min-w-0 flex-1">
-                            <p className="text-[11px] font-bold text-navy dark:text-white truncate">{activePin.label}</p>
-                            <p className="text-[10px] text-gray-400">
+                            <p className="text-[11px] font-bold text-content truncate">{activePin.label}</p>
+                            <p className="text-[10px] text-content-3">
                               {activePin.category} · {activePin.priority} · {activePin.confidence} location
                             </p>
                           </div>
@@ -1396,28 +1182,28 @@ export default function App() {
                 <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-4 py-4">
                   {messages.map(m => (
                     <div key={m.id} className={`flex gap-3 ${m.type === 'user' ? 'flex-row-reverse' : ''}`}>
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 border border-gray-100 ${m.type === 'bot' ? 'bg-navy text-white' : 'bg-saffron text-white'}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 border border-[var(--color-border)] ${m.type === 'bot' ? 'bg-cta text-white' : 'bg-saffron text-white'}`}>
                         {m.type === 'bot' ? '🤖' : 'RC'}
                       </div>
                       <div className="flex flex-col max-w-[75%]">
                         <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line relative overflow-hidden ${
                           m.type === 'bot' 
-                            ? 'bg-white dark:bg-gray-800 text-navy dark:text-white border-b-4 border-gray-100 dark:border-gray-900' 
-                            : 'bg-navy dark:bg-saffron text-white rounded-tr-none'
+                            ? 'surface  text-content  border-b-4 border-[var(--color-border)] ' 
+                            : 'bg-cta dark:bg-saffron text-white rounded-tr-none'
                         }`}>
                           {m.content}
                           {m.content.includes("Photo attached!") && pendingComplaint.photoUrl && (
-                            <img src={pendingComplaint.photoUrl} className="mt-2 rounded-lg max-h-40 w-full object-cover border border-gray-100" alt="Complaint Attachment" />
+                            <img src={pendingComplaint.photoUrl} className="mt-2 rounded-lg max-h-40 w-full object-cover border border-[var(--color-border)]" alt="Complaint Attachment" />
                           )}
                         </div>
-                        <span className={`text-[10px] text-gray-400 mt-1 ${m.type === 'user' ? 'text-right' : ''}`}>{m.timestamp}</span>
+                        <span className={`text-[10px] text-content-3 mt-1 ${m.type === 'user' ? 'text-right' : ''}`}>{m.timestamp}</span>
                       </div>
                     </div>
                   ))}
                   {isTyping && (
                     <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-navy flex items-center justify-center text-sm text-white shrink-0">🤖</div>
-                      <div className="bg-white dark:bg-gray-800 p-3 pr-6 rounded-2xl flex gap-1 shadow-sm">
+                      <div className="w-8 h-8 rounded-full bg-cta flex items-center justify-center text-sm text-white shrink-0">🤖</div>
+                      <div className="surface p-3 pr-6 rounded-2xl flex gap-1 shadow-sm">
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing delay-75"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-typing delay-150"></div>
@@ -1434,7 +1220,7 @@ export default function App() {
                       <div className="flex flex-wrap gap-2">
                          <button 
                           onClick={() => handleSendMessage(aiSuggestedCategory || 'General')}
-                          className="px-4 py-1.5 bg-navy text-white rounded-full text-xs font-bold flex items-center gap-1.5 hover:bg-saffron transition-all"
+                          className="px-4 py-1.5 bg-cta text-white rounded-full text-xs font-bold flex items-center gap-1.5 hover:bg-saffron-bright transition-all"
                         >
                           <Award size={12} /> Yes, it's {aiSuggestedCategory}
                         </button>
@@ -1442,7 +1228,7 @@ export default function App() {
                           <button 
                             key={cat}
                             onClick={() => handleSendMessage(cat)}
-                            className="px-4 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
+                            className="px-4 py-1.5 surface border border-[var(--color-border-strong)] rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
                           >
                             {cat}
                           </button>
@@ -1454,7 +1240,7 @@ export default function App() {
                           <button 
                             key={cat}
                             onClick={() => handleSendMessage(cat)}
-                            className="px-4 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
+                            className="px-4 py-1.5 surface border border-[var(--color-border-strong)] rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
                           >
                             {cat}
                           </button>
@@ -1465,52 +1251,76 @@ export default function App() {
                         <button 
                           key={label}
                           onClick={() => handleSendMessage(lang === 'hi' ? (label === 'Emergency' ? 'आपातकाल' : label === 'Status Check' ? 'स्थिति' : 'शिकायत दर्ज करें') : label)}
-                          className="px-4 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
+                          className="px-4 py-1.5 surface border border-[var(--color-border-strong)] rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
                         >
                           {label}
                         </button>
                       ))
                     )}
                   </div>
-                  <div className="glass-strong border-2 border-gray-100 dark:border-gray-800 rounded-2xl flex items-end p-2 focus-within:border-navy dark:focus-within:border-cta transition-all shadow-sm">
+                  <form
+                    onSubmit={e => { e.preventDefault(); handleSendMessage(chatInput); }}
+                    className="glass-strong bordered border-2 rounded-2xl flex items-end p-2 focus-within:border-cta transition-colors shadow-sm"
+                  >
                     <div className="flex items-center gap-1">
-                      <label 
-                        className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all ${pendingComplaint.photoUrl ? 'bg-saffron/10 text-saffron' : 'text-gray-400 hover:text-saffron'}`}
+                      <label
+                        htmlFor="photo-upload"
+                        title="Attach a photo"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-cta ${
+                          pendingComplaint.photoUrl ? 'bg-saffron/10 text-saffron' : 'text-content-3 hover:text-saffron'
+                        }`}
                       >
-                        <Camera size={18} />
-                        <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+                        <Camera size={18} aria-hidden="true" />
+                        <span className="sr-only-focusable">Attach a photo</span>
+                        <input
+                          id="photo-upload"
+                          type="file"
+                          className="sr-only-focusable"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={handleFileUpload}
+                        />
                       </label>
-                      <button 
+                      <button
+                        type="button"
                         onClick={startListening}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isListening ? 'bg-red-50 text-red-500 animate-pulse' : 'text-gray-400 hover:text-saffron'}`}
+                        aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
+                        aria-pressed={isListening}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                          isListening ? 'bg-danger-pale text-danger animate-pulse' : 'text-content-3 hover:text-saffron'
+                        }`}
                       >
-                        <Mic size={18} />
+                        <Mic size={18} aria-hidden="true" />
                       </button>
                     </div>
-                    <textarea 
+
+                    <label htmlFor="chat-input" className="sr-only-focusable">
+                      {lang === 'en' ? 'Describe your problem' : 'अपनी समस्या बताएं'}
+                    </label>
+                    <textarea
+                      id="chat-input"
                       ref={chatInputRef}
-                      placeholder={lang === 'en' ? "Describe your problem..." : "अपनी समस्या बताएं..."}
-                      className="flex-1 border-none bg-transparent focus:ring-0 text-sm py-2 px-1 resize-none h-10 max-h-32 dark:text-white dark:placeholder-gray-500"
-                      onKeyDown={(e) => {
+                      value={chatInput}
+                      maxLength={MAX_MESSAGE_CHARS}
+                      placeholder={lang === 'en' ? 'Describe your problem…' : 'अपनी समस्या बताएं…'}
+                      className="flex-1 border-none bg-transparent focus:ring-0 outline-none text-sm py-2 px-1 resize-none h-10 max-h-32 text-content placeholder:text-content-3"
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                          handleSendMessage(e.currentTarget.value);
-                          e.currentTarget.value = '';
+                          handleSendMessage(chatInput);
                         }
                       }}
                     />
-                    <button 
-                      onClick={() => {
-                        if (chatInputRef.current) {
-                          handleSendMessage(chatInputRef.current.value);
-                          chatInputRef.current.value = '';
-                        }
-                      }}
-                      className="btn-sheen w-10 h-10 bg-gradient-to-br from-navy to-cta dark:from-cta dark:to-saffron text-white rounded-full flex items-center justify-center hover:shadow-lg hover:-translate-y-0.5 transition-all shrink-0"
+
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim() || isTyping}
+                      aria-label="Send message"
+                      className="btn-sheen w-10 h-10 bg-gradient-to-br from-cta to-saffron text-white rounded-full flex items-center justify-center hover:shadow-lg hover:-translate-y-0.5 transition-all shrink-0 disabled:opacity-40 disabled:hover:translate-y-0 disabled:cursor-not-allowed disabled:hover:shadow-none"
                     >
-                      <Send size={16} />
+                      <Send size={16} aria-hidden="true" />
                     </button>
-                  </div>
+                  </form>
                 </div>
               </motion.div>
             )}
@@ -1525,32 +1335,32 @@ export default function App() {
               >
                 <div className="flex items-center justify-between shrink-0">
                   <div>
-                    <h2 className="font-display font-bold text-2xl dark:text-white">{lang === 'en' ? 'Officer Dashboard' : 'अधिकारी डैशबोर्ड'}</h2>
-                    <p className="text-gray-400 text-sm mt-0.5">{lang === 'en' ? 'Track and manage citizen submissions' : 'प्रस्तुतियों को ट्रैक करें और प्रबंधित करें'}</p>
+                    <h2 className="font-display font-bold text-2xl">{lang === 'en' ? 'Officer Dashboard' : 'अधिकारी डैशबोर्ड'}</h2>
+                    <p className="text-content-3 text-sm mt-0.5">{lang === 'en' ? 'Track and manage citizen submissions' : 'प्रस्तुतियों को ट्रैक करें और प्रबंधित करें'}</p>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="flex bg-white dark:bg-[#111827] rounded-xl border border-gray-100 dark:border-gray-800 p-1 shadow-sm">
+                    <div className="flex surface rounded-xl border border-[var(--color-border)] p-1 shadow-sm">
                       <button
                         onClick={() => setDashboardTab('overview')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'overview' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'overview' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
                       >Overview</button>
                       <button
                         onClick={() => setDashboardTab('analytics')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'analytics' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'analytics' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
                       >Analytics</button>
                       <button
                         onClick={() => setDashboardTab('workload')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'workload' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'workload' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
                       >Workload</button>
                       <button
                         onClick={() => setDashboardTab('heatmap')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'heatmap' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-gray-500 hover:text-navy dark:hover:text-white'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'heatmap' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
                       >Heatmap</button>
                     </div>
                     <button
                       onClick={exportToCSV}
-                      className="btn-sheen px-4 h-10 bg-white dark:bg-[#111827] border border-gray-200 dark:border-gray-700 rounded-xl text-navy dark:text-white flex items-center gap-2 text-xs font-bold hover:border-navy dark:hover:border-cta transition-all shadow-sm"
+                      className="btn-sheen px-4 h-10 surface border border-[var(--color-border-strong)] rounded-xl text-content flex items-center gap-2 text-xs font-bold hover:border-cta dark:hover:border-cta transition-all shadow-sm"
                     >
                       <Download size={14} /> Export CSV
                     </button>
@@ -1566,28 +1376,28 @@ export default function App() {
                       <StatCard label="Resolved" value={stats.resolved} icon={<CheckCircle2 size={20} />} color="green" />
                     </div>
 
-                    <div className="flex-1 bg-white dark:bg-[#111827] rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
-                      <div className="px-6 py-4 bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <h3 className="font-bold text-sm tracking-wide shrink-0 dark:text-white">COMPLAINT REGISTRY</h3>
+                    <div className="flex-1 surface rounded-2xl border border-[var(--color-border)] shadow-sm overflow-hidden flex flex-col">
+                      <div className="px-6 py-4 surface-2 border-b border-[var(--color-border)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <h3 className="font-bold text-sm tracking-wide shrink-0">COMPLAINT REGISTRY</h3>
 
                         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                           <div className="relative flex-1 sm:w-64">
-                            <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                            <Search className="absolute left-3 top-2.5 text-content-3" size={14} />
                             <input
                               type="text"
                               placeholder="Search complaints..."
                               value={searchQuery}
                               onChange={(e) => setSearchQuery(e.target.value)}
-                              className="w-full h-9 pl-9 pr-4 bg-white dark:bg-gray-800 dark:text-white rounded-lg border border-gray-200 dark:border-gray-700 text-xs focus:ring-1 focus:ring-navy focus:border-navy dark:focus:ring-cta dark:focus:border-cta transition-all"
+                              className="w-full h-9 pl-9 pr-4 surface rounded-lg border border-[var(--color-border-strong)] text-xs focus:ring-1 focus:ring-cta focus:border-cta dark:focus:ring-cta dark:focus:border-cta transition-all"
                             />
                           </div>
-                          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                          <div className="flex gap-1 surface-2 p-1 rounded-lg">
                             {(['all', 'Pending', 'In Progress', 'Resolved'] as const).map(f => (
                               <button
                                 key={f}
                                 onClick={() => setDashboardFilter(f)}
                                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${
-                                  dashboardFilter === f ? 'bg-white dark:bg-gray-700 text-navy dark:text-white shadow-sm' : 'text-gray-400 hover:text-navy dark:hover:text-white'
+                                  dashboardFilter === f ? 'surface  text-content  shadow-sm' : 'text-content-3 hover:text-cta '
                                 }`}
                               >
                                 {f === 'all' ? 'All' : f}
@@ -1600,33 +1410,33 @@ export default function App() {
                       <div className="overflow-auto flex-1">
                         <table className="w-full text-left">
                           <thead>
-                            <tr className="border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-[#111827] z-10">
-                              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">ID</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">Category</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">Description</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">Status</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">SLA Timer</th>
-                              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase">Actions</th>
+                            <tr className="border-b border-[var(--color-border)] sticky top-0 surface z-10">
+                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">ID</th>
+                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Category</th>
+                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Description</th>
+                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Status</th>
+                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">SLA Timer</th>
+                              <th className="px-6 py-4 text-[10px] font-bold text-content-3 uppercase">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                          <tbody className="divide-y divide-[var(--color-border)]">
                             {filteredComplaints.length === 0 ? (
                               <tr>
-                                <td colSpan={6} className="px-6 py-12 text-center text-gray-400 text-sm">
+                                <td colSpan={6} className="px-6 py-12 text-center text-content-3 text-sm">
                                   No complaints found matching your criteria.
                                 </td>
                               </tr>
                             ) : (
                               filteredComplaints.map(c => (
-                                <tr key={c.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                                  <td className="px-6 py-4 font-mono text-xs font-bold text-navy dark:text-white">{c.id}</td>
-                                  <td className="px-6 py-4 text-xs font-medium dark:text-gray-300">
+                                <tr key={c.id} className="hover:bg-[var(--color-surface-2)] transition-colors">
+                                  <td className="px-6 py-4 font-mono text-xs font-bold text-content">{c.id}</td>
+                                  <td className="px-6 py-4 text-xs font-medium">
                                     <div className="flex flex-col gap-1">
                                       {c.category}
                                       <PriorityBadge priority={c.priority} />
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 text-xs text-gray-500 max-w-[200px] truncate">{c.description}</td>
+                                  <td className="px-6 py-4 text-xs text-content-2 max-w-[200px] truncate">{c.description}</td>
                                   <td className="px-6 py-4">
                                     <StatusBadge status={c.status} />
                                   </td>
@@ -1652,7 +1462,7 @@ export default function App() {
                 {dashboardTab === 'analytics' && (
                   <div className="flex-1 flex flex-col gap-6 overflow-auto pr-2 pb-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-4">
+                      <div className="surface p-6 rounded-2xl border border-[var(--color-border)] shadow-sm flex flex-col gap-4">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-saffron" size={20} />
                           <h3 className="font-display font-bold text-sm">Complaints by Category</h3>
@@ -1660,7 +1470,7 @@ export default function App() {
                         <div className="h-[300px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={categoryData} layout="vertical" margin={{ left: 20, right: 30 }}>
-                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chart.grid} />
                               <XAxis type="number" hide />
                               <YAxis 
                                 dataKey="name" 
@@ -1668,15 +1478,15 @@ export default function App() {
                                 width={120} 
                                 axisLine={false} 
                                 tickLine={false}
-                                style={{ fontSize: '11px', fontWeight: 600, fill: '#1d3557' }}
+                                style={{ fontSize: '11px', fontWeight: 600, fill: chart.content }}
                               />
                               <Tooltip 
-                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                contentStyle={chart.tooltip}
                                 cursor={{ fill: 'transparent' }}
                               />
                               <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
                                 {categoryData.map((_entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={['#1A2B5E', '#FF6B00', '#22C55E', '#3B82F6', '#F59E0B'][index % 5]} />
+                                  <Cell key={`cell-${index}`} fill={chart.series[index % chart.series.length]} />
                                 ))}
                               </Bar>
                             </BarChart>
@@ -1684,33 +1494,33 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-4">
+                      <div className="surface p-6 rounded-2xl border border-[var(--color-border)] shadow-sm flex flex-col gap-4">
                         <div className="flex items-center gap-2">
-                          <TrendingUp className="text-navy" size={20} />
+                          <TrendingUp className="text-content" size={20} />
                           <h3 className="font-display font-bold text-sm">7-Day Volume Trend</h3>
                         </div>
                         <div className="h-[300px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={volumeData}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chart.grid} />
                               <XAxis 
                                 dataKey="date" 
                                 axisLine={false} 
                                 tickLine={false} 
-                                style={{ fontSize: '10px', fill: '#94a3b8' }}
+                                style={{ fontSize: '10px', fill: chart.axis }}
                               />
                               <YAxis 
                                 axisLine={false} 
                                 tickLine={false} 
-                                style={{ fontSize: '10px', fill: '#94a3b8' }}
+                                style={{ fontSize: '10px', fill: chart.axis }}
                               />
-                              <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                              <Tooltip contentStyle={chart.tooltip} />
                               <Line 
                                 type="monotone" 
                                 dataKey="count" 
-                                stroke="#FF6B00" 
+                                stroke={chart.series[1]} 
                                 strokeWidth={3} 
-                                dot={{ fill: '#FF6B00', strokeWidth: 2, r: 4, stroke: '#fff' }}
+                                dot={{ fill: chart.series[1], strokeWidth: 2, r: 4, stroke: chart.surface }}
                                 activeDot={{ r: 6, strokeWidth: 0 }}
                               />
                             </LineChart>
@@ -1719,29 +1529,29 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                    <div className="surface p-6 rounded-2xl border border-[var(--color-border)] shadow-sm">
                       <div className="flex items-center justify-between mb-6">
-                        <h3 className="font-display font-bold text-sm dark:text-white">Resolution Performance</h3>
+                        <h3 className="font-display font-bold text-sm">Resolution Performance</h3>
                         <div className="flex items-center gap-4">
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-navy"></div>
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Total</span>
+                            <div className="w-2.5 h-2.5 rounded-full bg-cta"></div>
+                            <span className="text-[10px] font-bold text-content-2 uppercase">Total</span>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Resolved</span>
+                            <span className="text-[10px] font-bold text-content-2 uppercase">Resolved</span>
                           </div>
                         </div>
                       </div>
                       <div className="h-[250px] w-full">
                          <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={officerWorkload} barGap={8}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                              <XAxis dataKey="name" axisLine={false} tickLine={false} style={{ fontSize: '10px', fill: '#94a3b8' }} />
-                              <YAxis axisLine={false} tickLine={false} style={{ fontSize: '10px', fill: '#94a3b8' }} />
-                              <Tooltip cursor={{ fill: 'rgba(0,0,0,0.02)' }} contentStyle={{ borderRadius: '12px' }} />
-                              <Bar dataKey="count" name="Total Assigned" fill="#1A2B5E" radius={[4, 4, 0, 0]} barSize={24} />
-                              <Bar dataKey="solved" name="Resolved" fill="#22C55E" radius={[4, 4, 0, 0]} barSize={24} />
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chart.grid} />
+                              <XAxis dataKey="name" axisLine={false} tickLine={false} style={{ fontSize: '10px', fill: chart.axis }} />
+                              <YAxis axisLine={false} tickLine={false} style={{ fontSize: '10px', fill: chart.axis }} />
+                              <Tooltip cursor={{ fill: chart.grid, fillOpacity: 0.25 }} contentStyle={chart.tooltip} />
+                              <Bar dataKey="count" name="Total Assigned" fill={chart.series[0]} radius={[4, 4, 0, 0]} barSize={24} />
+                              <Bar dataKey="solved" name="Resolved" fill={chart.series[2]} radius={[4, 4, 0, 0]} barSize={24} />
                             </BarChart>
                          </ResponsiveContainer>
                       </div>
@@ -1753,11 +1563,11 @@ export default function App() {
                   <div className="flex-1 overflow-auto pr-2 pb-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {officerWorkload.map(off => (
-                        <TiltCard key={off.name} maxTilt={5} className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-6 hover:shadow-xl transition-shadow group">
+                        <TiltCard key={off.name} maxTilt={5} className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm flex flex-col gap-6 hover:shadow-xl transition-shadow group">
                           <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-xl grayscale group-hover:grayscale-0 transition-all">👨‍💼</div>
+                            <div className="w-12 h-12 surface-2 rounded-2xl flex items-center justify-center text-xl grayscale group-hover:grayscale-0 transition-all">👨‍💼</div>
                             <div>
-                              <h4 className="font-display font-bold text-navy">{off.name}</h4>
+                              <h4 className="font-display font-bold text-content">{off.name}</h4>
                               <p className="text-[10px] font-bold text-saffron uppercase tracking-widest">{off.ward}</p>
                             </div>
                             <div className="ml-auto bg-yellow-50 text-yellow-600 px-2 py-1 rounded-lg flex items-center gap-1 text-xs font-bold">
@@ -1766,9 +1576,9 @@ export default function App() {
                           </div>
 
                           <div className="grid grid-cols-3 gap-3">
-                            <div className="p-3 bg-gray-50 rounded-2xl flex flex-col gap-1">
-                              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Assigned</span>
-                              <span className="text-xl font-display font-bold text-navy">{off.count}</span>
+                            <div className="p-3 surface-2 rounded-2xl flex flex-col gap-1">
+                              <span className="text-[9px] font-bold text-content-3 uppercase tracking-tighter">Assigned</span>
+                              <span className="text-xl font-display font-bold text-content">{off.count}</span>
                             </div>
                             <div className="p-3 bg-green-50 rounded-2xl flex flex-col gap-1">
                               <span className="text-[9px] font-bold text-green-400 uppercase tracking-tighter">Solved</span>
@@ -1781,22 +1591,22 @@ export default function App() {
                           </div>
 
                           <div className="flex flex-col gap-2">
-                             <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
+                             <div className="flex justify-between items-center text-[10px] font-bold text-content-3 uppercase">
                                <span>Efficiency Rate</span>
                                <span>{off.count === 0 ? 0 : Math.round((off.solved / off.count) * 100)}%</span>
                              </div>
-                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                             <div className="h-2 surface-2 rounded-full overflow-hidden">
                                 <motion.div 
                                   initial={{ width: 0 }}
                                   animate={{ width: `${off.count === 0 ? 0 : (off.solved / off.count) * 100}%` }}
-                                  className="h-full bg-navy rounded-full"
+                                  className="h-full bg-cta rounded-full"
                                 ></motion.div>
                              </div>
                           </div>
                           
                           <button
                             onClick={() => setSelectedOfficer(off)}
-                            className="w-full py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold text-navy dark:text-white hover:bg-navy hover:text-white hover:border-navy dark:hover:bg-cta dark:hover:border-cta transition-all"
+                            className="w-full py-2 surface-2 border border-[var(--color-border-strong)] rounded-xl text-xs font-bold text-content hover:bg-navy hover:text-white hover:border-cta dark:hover:bg-cta dark:hover:border-cta transition-all"
                           >View Performance Report</button>
                         </TiltCard>
                       ))}
@@ -1805,19 +1615,19 @@ export default function App() {
                 )}
 
                 {dashboardTab === 'heatmap' && (
-                  <div className="flex-1 bg-white dark:bg-[#111827] rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col p-4">
+                  <div className="flex-1 surface rounded-3xl border border-[var(--color-border)] shadow-sm overflow-hidden flex flex-col p-4">
                     <div className="flex items-center justify-between mb-4 px-2">
                        <div className="flex flex-col">
-                          <h3 className="font-display font-bold text-navy dark:text-white text-sm">Citizen Complaint Heatmap</h3>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase">Interactive spatial density map</p>
+                          <h3 className="font-display font-bold text-content text-sm">Citizen Complaint Heatmap</h3>
+                          <p className="text-[10px] font-bold text-content-3 uppercase">Interactive spatial density map</p>
                        </div>
                        <div className="flex gap-4">
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-[10px] font-bold text-gray-500 uppercase">Critical</span></div>
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500"></div><span className="text-[10px] font-bold text-gray-500 uppercase">High</span></div>
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[10px] font-bold text-gray-500 uppercase">Normal</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-[10px] font-bold text-content-2 uppercase">Critical</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500"></div><span className="text-[10px] font-bold text-content-2 uppercase">High</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[10px] font-bold text-content-2 uppercase">Normal</span></div>
                        </div>
                     </div>
-                    <div className={`flex-1 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 relative z-10 shadow-inner map-premium ${isDarkMode ? 'map-dark' : ''}`}>
+                    <div className={`flex-1 rounded-2xl overflow-hidden border border-[var(--color-border)]  relative z-10 shadow-inner map-premium ${isDarkMode ? 'map-dark' : ''}`}>
                       <MapContainer center={[28.6139, 77.2090] as any} zoom={13} style={{ height: '100%', width: '100%' }}>
                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                         <MapController target={mapFlyTarget} zoom={15} />
@@ -1835,8 +1645,8 @@ export default function App() {
                             <Popup>
                               <div className="p-1">
                                 <div className="font-bold text-xs mb-1 font-mono">{c.id}</div>
-                                <div className="text-[10px] bg-gray-50 p-2 rounded-lg leading-relaxed">{c.description}</div>
-                                <div className="mt-2 text-[10px] font-bold uppercase text-navy flex justify-between">
+                                <div className="text-[10px] surface-2 p-2 rounded-lg leading-relaxed">{c.description}</div>
+                                <div className="mt-2 text-[10px] font-bold uppercase text-content flex justify-between">
                                   <span>{c.category}</span>
                                   <span>{c.priority}</span>
                                 </div>
@@ -1852,7 +1662,7 @@ export default function App() {
                           else showToast('Could not access your location');
                         }}
                         title="Locate me"
-                        className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-100 dark:border-gray-800 shadow-lg flex items-center justify-center text-navy dark:text-white hover:text-cta hover:-translate-y-0.5 transition-all"
+                        className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl glass-strong border shadow-lg flex items-center justify-center text-content hover:text-cta hover:-translate-y-0.5 transition-all"
                       >
                         <Locate size={16} />
                       </button>
@@ -1871,40 +1681,40 @@ export default function App() {
               >
                 <div className="max-w-4xl mx-auto space-y-8">
                   <div className="text-center py-8">
-                    <h2 className="text-3xl font-display font-black text-navy dark:text-white mb-2">Live Transparency Feed</h2>
-                    <p className="text-gray-400">Real-time log of community resolutions and civic progress.</p>
+                    <h2 className="text-3xl font-display font-black text-content mb-2">Live Transparency Feed</h2>
+                    <p className="text-content-3">Real-time log of community resolutions and civic progress.</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
-                      <div className="text-[10px] font-black text-gray-400 uppercase mb-2">Resolved This Week</div>
+                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm">
+                      <div className="text-[10px] font-black text-content-3 uppercase mb-2">Resolved This Week</div>
                       <div className="text-4xl font-display font-bold text-green-500">{stats.resolved + 12}</div>
                     </div>
-                    <div className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
-                      <div className="text-[10px] font-black text-gray-400 uppercase mb-2">Avg. Resolution Speed</div>
+                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm">
+                      <div className="text-[10px] font-black text-content-3 uppercase mb-2">Avg. Resolution Speed</div>
                       <div className="text-4xl font-display font-bold text-blue-500">22.4h</div>
                     </div>
-                    <div className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
-                      <div className="text-[10px] font-black text-gray-400 uppercase mb-2">Public Trust Score</div>
+                    <div className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-sm">
+                      <div className="text-[10px] font-black text-content-3 uppercase mb-2">Public Trust Score</div>
                       <div className="text-4xl font-display font-bold text-saffron">98.2%</div>
                     </div>
                   </div>
 
                   <div className="space-y-4">
                     {complaints.filter(c => c.status === 'Resolved' || c.status === 'In Progress').map(c => (
-                      <div key={c.id} className="bg-white dark:bg-[#111827] p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-md flex gap-6 items-start">
+                      <div key={c.id} className="surface p-6 rounded-3xl border border-[var(--color-border)] shadow-md flex gap-6 items-start">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${c.status === 'Resolved' ? 'bg-green-50 text-green-500' : 'bg-blue-50 text-blue-500'}`}>
                           {c.status === 'Resolved' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{c.category} • {c.id}</span>
-                            <span className="text-[10px] font-bold text-navy bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded-full">{c.date}</span>
+                            <span className="text-[10px] font-black text-content-3 uppercase tracking-widest">{c.category} • {c.id}</span>
+                            <span className="text-[10px] font-bold text-content surface-2 px-2 py-1 rounded-full">{c.date}</span>
                           </div>
-                          <h4 className="font-bold text-navy dark:text-white mb-2">{c.description}</h4>
+                          <h4 className="font-bold text-content mb-2">{c.description}</h4>
                           <div className="flex items-center gap-4">
                              <div className="flex items-center gap-1.5"><StatusBadge status={c.status} /></div>
-                             <div className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1"><MapPin size={10} /> Delhi, Ward {Math.floor(Math.random() * 50) + 1}</div>
+                             <div className="text-[10px] font-bold text-content-3 uppercase flex items-center gap-1"><MapPin size={10} /> Delhi, Ward {Math.floor(Math.random() * 50) + 1}</div>
                           </div>
                         </div>
                       </div>
@@ -1924,7 +1734,7 @@ export default function App() {
               >
                 <div className="text-center">
                   <h2 className="font-display font-bold text-3xl">{lang === 'en' ? 'Track Your Complaint' : 'शिकायत ट्रैक करें'}</h2>
-                  <p className="text-gray-400 mt-2">{lang === 'en' ? 'Enter your ID for live status updates' : 'लाइव अपडेट के लिए अपनी ID दर्ज करें'}</p>
+                  <p className="text-content-3 mt-2">{lang === 'en' ? 'Enter your ID for live status updates' : 'लाइव अपडेट के लिए अपनी ID दर्ज करें'}</p>
                 </div>
 
                 <form
@@ -1936,7 +1746,7 @@ export default function App() {
                     value={trackId}
                     onChange={(e) => { setTrackId(e.target.value.toUpperCase()); setTrackSearched(false); }}
                     placeholder="e.g. CIV-20240501-001"
-                    className="flex-1 h-14 rounded-2xl border-2 border-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-white px-6 font-mono font-bold focus:ring-0 focus:border-navy dark:focus:border-cta transition-all"
+                    className="flex-1 h-14 rounded-2xl border-2 border-[var(--color-border)] px-6 font-mono font-bold focus:ring-0 focus:border-cta dark:focus:border-cta transition-all"
                   />
                   <button
                     type="submit"
@@ -1950,17 +1760,17 @@ export default function App() {
                 <div className="w-full grid grid-cols-2 gap-4">
                    {complaints.filter(c => c.id === trackId).map(c => (
                      <React.Fragment key={c.id}>
-                        <div className="col-span-2 p-6 bg-white dark:bg-[#111827] rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-6">
+                        <div className="col-span-2 p-6 surface rounded-3xl border border-[var(--color-border)] shadow-sm flex flex-col gap-6">
                            <div className="flex justify-between items-start">
                               <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">Complaint Progress</span>
-                                <h3 className="font-display font-bold text-xl dark:text-white">{c.category}</h3>
+                                <span className="text-[10px] font-bold text-content-3 tracking-widest uppercase">Complaint Progress</span>
+                                <h3 className="font-display font-bold text-xl">{c.category}</h3>
                               </div>
                               <StatusBadge status={c.status} />
                            </div>
 
                            <div className="relative pl-8 flex flex-col gap-8">
-                             <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-gray-100 dark:bg-gray-800"></div>
+                             <div className="absolute left-2.5 top-2 bottom-2 w-0.5 surface-2"></div>
 
                              <TimelineStep done={true} label="Submitted" date={c.date} desc="Issue was successfully logged." />
                              <TimelineStep done={true} label="Under Review" date="Active" desc={`Assigned to ${c.officer}`} />
@@ -1971,22 +1781,26 @@ export default function App() {
                      </React.Fragment>
                    ))}
                    {trackSearched && trackId.trim() && !complaints.some(c => c.id === trackId) && (
-                     <div className="col-span-2 p-8 bg-white dark:bg-[#111827] rounded-3xl border border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center gap-3 text-center">
-                       <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-500 flex items-center justify-center">
+                     <div className="col-span-2 p-8 surface rounded-3xl border border-dashed border-[var(--color-border-strong)] flex flex-col items-center gap-3 text-center">
+                       <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center">
                          <AlertTriangle size={22} />
                        </div>
-                       <p className="font-bold text-navy dark:text-white">No complaint found</p>
-                       <p className="text-sm text-gray-400">Double-check the ID — it should look like CIV-20260430-001.</p>
+                       <p className="font-bold text-content">No complaint found</p>
+                       <p className="text-sm text-content-3">Double-check the ID — it should look like CIV-20260430-001.</p>
                      </div>
                    )}
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
+          </ErrorBoundary>
         </main>
 
         {/* Right Sidebar - Info/Recent */}
-        <aside className="w-[300px] glass border-l border-gray-100 dark:border-white/5 flex flex-col p-6 shrink-0 gap-8">
+        <aside
+          className="hidden xl:flex w-[300px] glass border-l border-[var(--color-border)] flex-col p-6 shrink-0 gap-8 overflow-y-auto"
+          aria-label="Summary and recent activity"
+        >
            <div className="flex flex-col gap-3">
              <div className="flex items-center gap-2 mb-1">
                <div className="w-2 h-2 rounded-full bg-saffron tracking-tight"></div>
@@ -2007,18 +1821,18 @@ export default function App() {
                  <div
                    key={c.id}
                    onClick={() => setSelectedComplaint(c)}
-                   className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/5 hover:border-saffron dark:hover:border-saffron/50 transition-all cursor-pointer group"
+                   className="p-3 surface-2 rounded-xl border border-[var(--color-border)] hover:border-saffron dark:hover:border-saffron/50 transition-all cursor-pointer group"
                  >
                    <div className="flex justify-between items-center mb-1">
-                     <span className="font-mono text-[10px] font-bold text-navy dark:text-white">{c.id}</span>
-                     <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full ${c.status === 'Resolved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                     <span className="font-mono text-[10px] font-bold text-content">{c.id}</span>
+                     <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full ${c.status === 'Resolved' ? 'bg-green-100 text-green-700  ' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                        {c.status}
                      </span>
                    </div>
-                   <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate group-hover:text-navy dark:group-hover:text-white transition-colors">{c.description}</p>
-                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-white/10">
-                     <span className="text-[9px] text-gray-400 flex items-center gap-1 font-bold"><MapPin size={10} /> {c.category}</span>
-                     <span className="text-[9px] text-gray-400 font-bold italic">{c.date}</span>
+                   <p className="text-[11px] text-content-2 font-medium truncate group-hover:text-content transition-colors">{c.description}</p>
+                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--color-border-strong)]">
+                     <span className="text-[9px] text-content-3 flex items-center gap-1 font-bold"><MapPin size={10} /> {c.category}</span>
+                     <span className="text-[9px] text-content-3 font-bold italic">{c.date}</span>
                    </div>
                  </div>
                ))}
@@ -2039,7 +1853,7 @@ export default function App() {
             >
               <div className="p-8 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white flex justify-between items-center relative overflow-hidden">
                 <div className="aurora-bg" aria-hidden="true">
-                  <div className="aurora-blob w-40 h-40 bg-white -top-10 -right-10" />
+                  <div className="aurora-blob w-40 h-40 surface -top-10 -right-10" />
                 </div>
                 <div className="relative">
                   <h3 className="font-display font-bold text-2xl">Complaint Profile</h3>
@@ -2061,16 +1875,16 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-4">
                    <DetailField label="AI Priority Score" value={<PriorityBadge priority={selectedComplaint.priority} />} />
-                   <DetailField label="User Sentiment" value={<span className="text-sm font-bold capitalize dark:text-white">{selectedComplaint.sentiment || 'Neutral'}</span>} />
+                   <DetailField label="User Sentiment" value={<span className="text-sm font-bold capitalize">{selectedComplaint.sentiment || 'Neutral'}</span>} />
                 </div>
 
-                <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-2xl border border-gray-100 dark:border-white/5">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Detailed Issue Description</span>
-                  <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed italic">{selectedComplaint.description}</p>
+                <div className="surface-2 p-6 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[10px] font-bold text-content-3 uppercase tracking-widest block mb-2">Detailed Issue Description</span>
+                  <p className="text-sm text-content leading-relaxed italic">{selectedComplaint.description}</p>
                 </div>
 
                 <div className="space-y-4">
-                  <h4 className="text-xs font-black text-navy dark:text-white uppercase tracking-widest flex items-center gap-2">
+                  <h4 className="text-xs font-black text-content uppercase tracking-widest flex items-center gap-2">
                     <Stars size={14} className="text-saffron" />
                     AI Suggested Responses
                   </h4>
@@ -2079,7 +1893,7 @@ export default function App() {
                       <button
                         key={i}
                         onClick={() => copyToClipboard(tpl)}
-                        className="p-3 text-left bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-xs text-navy dark:text-gray-200 hover:border-saffron hover:bg-saffron/5 transition-all shadow-sm group relative"
+                        className="p-3 text-left surface border border-[var(--color-border)] rounded-xl text-xs text-content hover:border-saffron hover:bg-saffron/5 transition-all shadow-sm group relative"
                       >
                         <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Download size={12} className="text-saffron" />
@@ -2087,7 +1901,7 @@ export default function App() {
                         {tpl}
                       </button>
                     )) : (
-                      <div className="flex gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                      <div className="flex gap-2 p-3 surface-2 rounded-xl">
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse delay-75"></div>
                         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-pulse delay-150"></div>
@@ -2096,7 +1910,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <div className="flex gap-4 pt-4 border-t border-[var(--color-border)]">
                   <button
                     onClick={() => updateComplaintStatus(selectedComplaint.id, selectedComplaint.status === 'Pending' ? 'In Progress' : 'Resolved')}
                     className="btn-sheen flex-1 h-12 bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:shadow-lg transition-all active:scale-95"
@@ -2105,7 +1919,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => setSelectedComplaint(null)}
-                    className="px-8 h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-2xl font-bold border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-700 hover:border-navy dark:hover:border-cta transition-all"
+                    className="px-8 h-12 surface-2 text-content-2 rounded-2xl font-bold border border-[var(--color-border-strong)] hover:bg-[var(--color-surface)] hover:border-cta transition-all"
                   >Close</button>
                 </div>
               </div>
@@ -2197,16 +2011,6 @@ function MapController({ target, zoom = 16 }: { target: { lat: number; lng: numb
   return null;
 }
 
-/** Switches tile provider based on theme — dark uses a CSS filter over OSM so no API key is needed. */
-function PremiumTileLayer({ dark }: { dark: boolean }) {
-  return (
-    <TileLayer
-      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      attribution={dark ? '&copy; OpenStreetMap contributors' : '&copy; OpenStreetMap contributors'}
-    />
-  );
-}
-
 function SidebarItem({ icon, label, active, badge, onClick }: any) {
   return (
     <button
@@ -2214,10 +2018,10 @@ function SidebarItem({ icon, label, active, badge, onClick }: any) {
       className={`btn-sheen flex items-center gap-3 px-5 py-3 mx-2 rounded-xl transition-all relative ${
         active
           ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-lg glow-navy'
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-navy dark:hover:text-white'
+          : 'text-content-2  hover:bg-[var(--color-surface-2)]  hover:text-cta '
       }`}
     >
-      <span className={active ? 'text-saffron-light' : 'text-gray-400'}>{icon}</span>
+      <span className={active ? 'text-saffron-light' : 'text-content-3'}>{icon}</span>
       <span className="text-[13px] font-bold flex-1 text-left">{label}</span>
       {badge ? <span className="bg-gradient-to-br from-saffron to-saffron-bright text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">{badge}</span> : null}
     </button>
@@ -2232,10 +2036,10 @@ function StatCard({ label, value, icon, color }: any) {
     green: 'bg-gradient-to-br from-green-400 to-green-600 text-white shadow-lg shadow-green-500/30'
   };
   return (
-    <TiltCard maxTilt={6} className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-1 hover:shadow-xl transition-shadow">
+    <TiltCard maxTilt={6} className="surface p-5 rounded-2xl border border-[var(--color-border)] shadow-sm flex flex-col gap-1 hover:shadow-xl transition-shadow">
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2 ${colors[color]}`} style={{ transform: 'translateZ(20px)' }}>{icon}</div>
-      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</span>
-      <span className="text-3xl font-display font-bold leading-tight dark:text-white" style={{ transform: 'translateZ(10px)' }}>{value}</span>
+      <span className="text-[10px] font-bold text-content-3 uppercase tracking-wider">{label}</span>
+      <span className="text-3xl font-display font-bold leading-tight" style={{ transform: 'translateZ(10px)' }}>{value}</span>
     </TiltCard>
   );
 }
@@ -2247,12 +2051,12 @@ function MiniStat({ color, label, value, icon }: any) {
     green: 'bg-gradient-to-br from-green-500 to-green-700 text-white'
   };
   return (
-    <div className="flex items-center justify-between bg-gray-50 dark:bg-white/5 p-2.5 rounded-2xl border border-gray-100 dark:border-white/5">
+    <div className="flex items-center justify-between surface-2 p-2.5 rounded-2xl border border-[var(--color-border)]">
       <div className="flex items-center gap-3">
         <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-sm ${colors[color]}`}>{icon}</div>
-        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400">{label}</span>
+        <span className="text-[11px] font-bold text-content-2">{label}</span>
       </div>
-      <span className="text-lg font-display font-bold text-navy dark:text-white">{value}</span>
+      <span className="text-lg font-display font-bold text-content">{value}</span>
     </div>
   );
 }
@@ -2289,16 +2093,16 @@ function StatusBadge({ status }: { status: Complaint['status'] }) {
 
 function DetailField({ label, value }: any) {
   return (
-    <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-xl flex flex-col gap-1">
-      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</span>
-      <div className="text-sm font-bold text-navy dark:text-white">{value}</div>
+    <div className="p-4 surface-2 rounded-xl flex flex-col gap-1">
+      <span className="text-[10px] font-bold text-content-3 uppercase tracking-widest">{label}</span>
+      <div className="text-sm font-bold text-content">{value}</div>
     </div>
   );
 }
 
 function PriorityBadge({ priority }: { priority: Complaint['priority'] }) {
   const colors: any = {
-    'Low': 'bg-gray-100 text-gray-600',
+    'Low': 'surface-2 text-content-2',
     'Medium': 'bg-blue-50 text-blue-600',
     'High': 'bg-orange-50 text-orange-600',
     'Critical': 'bg-red-50 text-red-600',
@@ -2331,7 +2135,7 @@ function SLATimer({ deadline, status }: { deadline: number, status: string }) {
 
   return (
     <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-mono text-[11px] font-bold border transition-colors ${
-      isOverdue ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-500 border-gray-100'
+      isOverdue ? 'bg-red-50 text-red-600 border-red-200' : 'surface-2 text-content-2 border-[var(--color-border)]'
     }`}>
       <Clock size={12} />
       <span>{isOverdue ? '-' : ''}{String(hours).padStart(2, '0')}:{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</span>
@@ -2343,14 +2147,14 @@ function TimelineStep({ done, current, label, date, desc }: any) {
   return (
     <div className="relative">
       <div className={`absolute -left-[30px] top-1 w-4 h-4 rounded-full border-4 border-white shadow-md z-10 transition-all ${
-        done ? 'bg-navy dark:bg-green-500 scale-110' : current ? 'bg-saffron animate-pulse scale-125' : 'bg-gray-200 dark:bg-gray-700'
+        done ? 'bg-cta dark:bg-green-500 scale-110' : current ? 'bg-saffron animate-pulse scale-125' : 'bg-gray-200 '
       }`}></div>
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center justify-between">
-           <span className={`text-sm font-bold ${done ? 'text-navy dark:text-white' : current ? 'text-saffron' : 'text-gray-300'}`}>{label}</span>
-           <span className="text-[10px] font-bold uppercase text-gray-400">{date}</span>
+           <span className={`text-sm font-bold ${done ? 'text-content ' : current ? 'text-saffron' : 'text-content-3'}`}>{label}</span>
+           <span className="text-[10px] font-bold uppercase text-content-3">{date}</span>
         </div>
-        <p className={`text-xs ${done ? 'text-gray-600 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'}`}>{desc}</p>
+        <p className={`text-xs ${done ? 'text-content-2 ' : 'text-content-3 '}`}>{desc}</p>
       </div>
     </div>
   );
@@ -2366,14 +2170,14 @@ function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white dark:bg-gray-900 rounded-[32px] w-full max-w-sm p-8 shadow-2xl relative"
+        className="surface rounded-[32px] w-full max-w-sm p-8 shadow-2xl relative"
       >
         <div className="text-center">
-          <div className="w-20 h-20 bg-green-50 dark:bg-green-900/20 text-green-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-green-50 text-green-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={40} />
           </div>
-          <h3 className="font-display font-bold text-2xl text-navy dark:text-white">Resolution Feedback</h3>
-          <p className="text-gray-400 text-sm mt-2">How was your experience for <span className="font-mono text-navy dark:text-saffron font-bold">{complaint.id}</span>?</p>
+          <h3 className="font-display font-bold text-2xl text-content">Resolution Feedback</h3>
+          <p className="text-content-3 text-sm mt-2">How was your experience for <span className="font-mono text-content dark:text-saffron font-bold">{complaint.id}</span>?</p>
         </div>
 
         <div className="flex justify-center gap-2 my-8">
@@ -2397,12 +2201,12 @@ function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
           placeholder="Detailed feedback..."
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 text-xs h-24 focus:ring-2 focus:ring-navy outline-none resize-none mb-6 dark:text-white"
+          className="w-full surface-2 border border-[var(--color-border)] rounded-2xl p-4 text-xs h-24 focus:ring-2 focus:ring-cta outline-none resize-none mb-6"
         ></textarea>
 
         <button 
           onClick={() => onSubmit(rating, feedback)}
-          className="w-full h-12 bg-navy dark:bg-saffron text-white rounded-2xl font-bold hover:bg-saffron transition-all"
+          className="w-full h-12 bg-cta dark:bg-saffron text-white rounded-2xl font-bold hover:bg-saffron-bright transition-all"
         >
           Submit Feedback
         </button>
@@ -2423,7 +2227,7 @@ function OfficerReportModal({ officer, onClose }: { officer: { name: string; war
       >
         <div className="p-8 bg-gradient-to-br from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white relative overflow-hidden">
           <div className="aurora-bg" aria-hidden="true">
-            <div className="aurora-blob w-40 h-40 bg-white -top-10 -right-10" />
+            <div className="aurora-blob w-40 h-40 surface -top-10 -right-10" />
           </div>
           <div className="relative flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-2xl">👨‍💼</div>
@@ -2440,26 +2244,26 @@ function OfficerReportModal({ officer, onClose }: { officer: { name: string; war
 
         <div className="p-8 space-y-6">
           <div className="grid grid-cols-3 gap-3">
-            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-2xl flex flex-col gap-1 text-center">
-              <span className="text-[9px] font-bold text-gray-400 uppercase">Assigned</span>
-              <span className="text-2xl font-display font-bold text-navy dark:text-white">{officer.count}</span>
+            <div className="p-3 surface-2 rounded-2xl flex flex-col gap-1 text-center">
+              <span className="text-[9px] font-bold text-content-3 uppercase">Assigned</span>
+              <span className="text-2xl font-display font-bold text-content">{officer.count}</span>
             </div>
-            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-2xl flex flex-col gap-1 text-center">
+            <div className="p-3 bg-green-50 rounded-2xl flex flex-col gap-1 text-center">
               <span className="text-[9px] font-bold text-green-500 uppercase">Solved</span>
-              <span className="text-2xl font-display font-bold text-green-600 dark:text-green-400">{officer.solved}</span>
+              <span className="text-2xl font-display font-bold text-green-600">{officer.solved}</span>
             </div>
-            <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex flex-col gap-1 text-center">
+            <div className="p-3 bg-orange-50 rounded-2xl flex flex-col gap-1 text-center">
               <span className="text-[9px] font-bold text-orange-400 uppercase">Pending</span>
-              <span className="text-2xl font-display font-bold text-orange-600 dark:text-orange-400">{officer.pending}</span>
+              <span className="text-2xl font-display font-bold text-orange-600">{officer.pending}</span>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
+            <div className="flex justify-between items-center text-[10px] font-bold text-content-3 uppercase">
               <span className="flex items-center gap-1.5"><Gauge size={12} /> Efficiency Rate</span>
               <span>{efficiency}%</span>
             </div>
-            <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-2.5 surface-2 rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${efficiency}%` }}
@@ -2469,14 +2273,14 @@ function OfficerReportModal({ officer, onClose }: { officer: { name: string; war
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-2xl">
-            <span className="text-xs font-bold text-gray-500 flex items-center gap-2"><Briefcase size={14} /> Citizen Rating</span>
-            <span className="text-sm font-bold text-yellow-600 dark:text-yellow-400 flex items-center gap-1">★ {officer.rating.toFixed(1)} / 5.0</span>
+          <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-2xl">
+            <span className="text-xs font-bold text-content-2 flex items-center gap-2"><Briefcase size={14} /> Citizen Rating</span>
+            <span className="text-sm font-bold text-yellow-600 flex items-center gap-1">★ {officer.rating.toFixed(1)} / 5.0</span>
           </div>
 
           <button
             onClick={onClose}
-            className="w-full h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-2xl font-bold border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-700 hover:border-navy dark:hover:border-cta transition-all"
+            className="w-full h-12 surface-2 text-content-2 rounded-2xl font-bold border border-[var(--color-border-strong)] hover:bg-[var(--color-surface)] hover:border-cta transition-all"
           >Close</button>
         </div>
       </motion.div>
@@ -2498,26 +2302,26 @@ function OnboardingTour({ onComplete }: { onComplete: () => void }) {
         key={step}
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
-        className="bg-white dark:bg-gray-900 rounded-[32px] w-full max-w-sm p-8 shadow-2xl overflow-hidden relative"
+        className="surface rounded-[32px] w-full max-w-sm p-8 shadow-2xl overflow-hidden relative"
       >
         <div className="flex justify-between items-center mb-8">
           <div className="flex gap-1">
-            {steps.map((_, i) => (i <= step ? <div key={i} className="h-1 w-8 bg-navy dark:bg-saffron rounded-full"></div> : <div key={i} className="h-1 w-2 bg-gray-100 dark:bg-gray-800 rounded-full"></div>))}
+            {steps.map((_, i) => (i <= step ? <div key={i} className="h-1 w-8 bg-cta dark:bg-saffron rounded-full"></div> : <div key={i} className="h-1 w-2 surface-2 rounded-full"></div>))}
           </div>
-          <button onClick={onComplete} className="text-gray-300 hover:text-navy dark:hover:text-white transition-colors">✕</button>
+          <button onClick={onComplete} className="text-content-3 hover:text-cta transition-colors">✕</button>
         </div>
 
         <div className="mb-8">
-          <div className="w-12 h-12 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-center text-navy dark:text-saffron mb-4">
+          <div className="w-12 h-12 surface-2 rounded-2xl flex items-center justify-center text-content dark:text-saffron mb-4">
             {steps[step].icon}
           </div>
-          <h3 className="font-display font-bold text-2xl text-navy dark:text-white">{steps[step].title}</h3>
-          <p className="text-gray-400 mt-2 leading-relaxed">{steps[step].desc}</p>
+          <h3 className="font-display font-bold text-2xl text-content">{steps[step].title}</h3>
+          <p className="text-content-3 mt-2 leading-relaxed">{steps[step].desc}</p>
         </div>
 
         <button 
           onClick={() => step < steps.length - 1 ? setStep(step + 1) : onComplete()}
-          className="w-full h-12 bg-navy dark:bg-saffron text-white rounded-2xl font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
+          className="w-full h-12 bg-cta dark:bg-saffron text-white rounded-2xl font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
         >
           {step < steps.length - 1 ? "Next" : "Get Started"} <ChevronRight size={18} />
         </button>

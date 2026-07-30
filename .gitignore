@@ -4,8 +4,17 @@ dist/
 coverage/
 .DS_Store
 *.log
+
+# Secrets — never commit. Only the template is tracked.
 .env*
 !.env.example
-.env
-node_modules
-dist
+
+# Scratch build output from the production-readiness audit.
+# Safe to delete these directories entirely.
+.apirun/
+.apitest/
+.apitest2/
+preview-build/
+
+# Leftover scratch file from the audit (sandbox could not delete it).
+src/__eb_test.tsx
