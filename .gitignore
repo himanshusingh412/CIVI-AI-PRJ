@@ -20,3 +20,5 @@ preview-build/
 src/__eb_test.tsx
 .diag*/
 .diag-ui.html
+.rbac*/
+.sa/

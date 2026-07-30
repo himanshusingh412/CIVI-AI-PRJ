@@ -56,6 +56,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Button } from './components/Button';
 import { Skeleton, SkeletonRegion } from './components/Skeleton';
 import { MobileNav } from './components/MobileNav';
+import { AdminPortal } from './components/admin/AdminPortal';
 import { useThemeTokens } from './hooks/useThemeTokens';
 import { sendChat, getBrowserLocation, type ChatTurn } from './services/chatService';
 import { OFFICERS, RESPONSES } from './constants';
@@ -959,6 +960,12 @@ export default function App() {
             icon={<Search size={18} />} 
             label={lang === 'en' ? 'Track Complaint' : 'शिकायत ट्रैक करें'} 
           />
+          <SidebarItem
+            active={view === 'admin'}
+            onClick={() => setView('admin')}
+            icon={<ShieldCheck size={18} />}
+            label={lang === 'en' ? 'Admin Portal' : 'एडमिन पोर्टल'}
+          />
           <SidebarItem 
             active={view === 'public_feed'} 
             onClick={() => setView('public_feed')} 
@@ -1628,6 +1635,21 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </motion.div>
+            )}
+
+            {view === 'admin' && (
+              <motion.div
+                key="admin"
+                variants={VIEW_TRANSITION}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="flex-1 flex flex-col overflow-hidden"
+              >
+                <ErrorBoundary scope="admin">
+                  <AdminPortal />
+                </ErrorBoundary>
               </motion.div>
             )}
 

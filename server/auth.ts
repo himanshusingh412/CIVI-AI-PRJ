@@ -222,7 +222,7 @@ export function verifyOtp(rawIdentifier: string, otp: string): VerifyOtpResult {
   // success — burn the OTP, issue a session
   const display = rec.display;
   otpStore.delete(key);
-  return { ok: true, ...issueSession(display, 'email') };
+  return { ok: true, ...issueSession(display, 'email', key) };
 }
 
 // ───────────────────────── sessions (stateless) ─────────────────────────
@@ -253,6 +253,12 @@ const SESSION_SECRET = (() => {
 
 type SessionPayload = {
   sub: string;      // masked identifier (never the raw address)
+  /**
+   * SHA-256 of the lowercased real address. Lets the server match a session
+   * against configured addresses (e.g. SUPER_ADMIN_EMAIL) without ever
+   * putting the raw address in a token the browser holds.
+   */
+  sh?: string;
   ch: Channel;
   iat: number;
   exp: number;      // sliding expiry
@@ -283,10 +289,12 @@ function mint(payload: SessionPayload) {
   return `${data}.${sign(data)}`;
 }
 
-export function issueSession(identifier: string, channel: Channel) {
+/** `subject` is the real address; only its hash is stored. */
+export function issueSession(identifier: string, channel: Channel, subject?: string) {
   const now = Date.now();
   const payload: SessionPayload = {
     sub: identifier,
+    sh: subject ? sha256(subject.trim().toLowerCase()) : undefined,
     ch: channel,
     iat: now,
     exp: now + AUTH_LIMITS.SESSION_TTL_MS,
@@ -329,6 +337,7 @@ export function getSession(token: string | undefined) {
   if (!p) return null;
   return {
     identifier: p.sub,
+    subjectHash: p.sh,
     channel: p.ch,
     expiresAt: p.exp,
     createdAt: p.iat,
@@ -388,3 +397,9 @@ export const sessionStats = () => ({
   pendingOtps: otpStore.size,
   revoked: revokedJti.size,
 });
+
+/** True if `email` is the subject of this session. Constant-time. */
+export function sessionMatchesEmail(subjectHash: string | undefined, email: string): boolean {
+  if (!subjectHash || !email) return false;
+  return safeEqual(subjectHash, sha256(email.trim().toLowerCase()));
+}

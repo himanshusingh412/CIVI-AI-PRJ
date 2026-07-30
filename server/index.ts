@@ -36,6 +36,8 @@ import {
   LIMITS,
 } from './limits.js';
 import { handleChat } from './chat.js';
+import { adminRouter } from './admin.js';
+import { seedDemoData, storeStatus, initStore } from './store.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -156,7 +158,7 @@ app.post('/api/auth/google', googleLimiter, async (req, res) => {
       });
     }
 
-    const session = issueSession(result.maskedEmail, 'google');
+    const session = issueSession(result.maskedEmail, 'google', result.email);
     const csrf = setSessionCookies(res, session.token, session.expiresInSec);
     return res.json({
       ok: true,
@@ -325,6 +327,10 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
+// ───────────────────────── admin portal ─────────────────────────
+// requireAuth first: admin RBAC assumes an authenticated session exists.
+app.use('/api/admin', requireAuth, adminRouter);
+
 // ───────────────────────── observability ─────────────────────────
 app.get('/api/health', (_req, res) =>
   res.json({
@@ -334,6 +340,7 @@ app.get('/api/health', (_req, res) =>
     google: googleAuthStatus(),
     bot: botStatus(),
     sessions: sessionStats(),
+    store: storeStatus(),
     budget: budgetStatus(),
     concurrency: concurrencyStatus(),
     limits: { ...LIMITS, auth: AUTH_LIMITS },
@@ -355,6 +362,9 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
  * listener — calling listen() there would crash the function. Only bind a
  * port when this module is the process entrypoint (local `npm run server`).
  */
+await initStore();
+await seedDemoData();
+
 const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
 if (!isServerless) {

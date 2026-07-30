@@ -31,7 +31,7 @@ export interface SystemNotification {
   read: boolean;
 }
 
-export type ViewType = 'chat' | 'dashboard' | 'track' | 'public_feed';
+export type ViewType = 'chat' | 'dashboard' | 'track' | 'public_feed' | 'admin';
 export type LangType = 'en' | 'hi';
 
 export interface ChatMessage {
