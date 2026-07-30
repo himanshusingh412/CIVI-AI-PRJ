@@ -11,11 +11,16 @@ export type EmailResult =
   | { ok: true; provider: 'resend' | 'console'; messageId?: string }
   | { ok: false; provider: 'resend' | 'console'; error: string };
 
-export const emailStatus = () => ({
-  enabled: EMAIL_ENABLED,
-  provider: EMAIL_ENABLED && RESEND_API_KEY ? 'resend' : 'console',
-  from: EMAIL_FROM,
-});
+export const emailStatus = () => {
+  const enabled = process.env.EMAIL_ENABLED === 'true';
+  const apiKey = process.env.RESEND_API_KEY || '';
+  const from = process.env.EMAIL_FROM || 'CivicAI <onboarding@resend.dev>';
+  return {
+    enabled,
+    provider: enabled && apiKey ? 'resend' : 'console',
+    from,
+  };
+};
 
 export function isValidEmail(raw: string): { ok: boolean; reason?: string } {
   const e = String(raw || '').trim().toLowerCase();

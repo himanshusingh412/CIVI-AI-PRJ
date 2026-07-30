@@ -52,7 +52,6 @@ import { Complaint, ViewType, LangType, ChatMessage, SystemNotification } from '
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import { LoginScreen } from './components/LoginScreen';
-import { LoadingScreen } from './components/LoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Button } from './components/Button';
 import { sendChat, getBrowserLocation, type ChatTurn } from './services/chatService';
@@ -76,6 +75,24 @@ type OfficerStats = {
   solved: number;
   pending: number;
   rating: number;
+};
+
+/**
+ * Shared view transition — "fade through" with a small rise.
+ * Exit runs at ~65% of the entrance duration so the outgoing view clears
+ * quickly and the incoming one feels responsive rather than delayed.
+ * Only opacity/transform animate, so this stays on the compositor.
+ */
+const VIEW_TRANSITION = {
+  initial: { opacity: 0, y: 12, scale: 0.995 },
+  animate: {
+    opacity: 1, y: 0, scale: 1,
+    transition: { duration: 0.34, ease: [0.16, 1, 0.3, 1] as const },
+  },
+  exit: {
+    opacity: 0, y: -8, scale: 0.995,
+    transition: { duration: 0.22, ease: [0.4, 0, 1, 1] as const },
+  },
 };
 
 /** Must mirror LIMITS.MAX_HISTORY_MESSAGES in server/limits.ts. */
@@ -754,8 +771,6 @@ export default function App() {
     showToast("Exporting CSV...");
   };
 
-  if (status === 'loading') return <LoadingScreen />;
-
   if (status !== 'authenticated') {
     return <LoginScreen onSignedIn={handleSignedIn} />;
   }
@@ -1014,13 +1029,14 @@ export default function App() {
           className="flex-1 overflow-hidden p-4 sm:p-6 flex flex-col focus:outline-none"
         >
           <ErrorBoundary scope={`view:${view}`}>
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" initial={false}>
             {view === 'chat' && (
               <motion.div 
                 key="chat"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                variants={VIEW_TRANSITION}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="flex-1 flex flex-col gap-4 overflow-hidden"
               >
                 <div className="flex items-center gap-4 pb-4 border-b border-[var(--color-border)]">
@@ -1287,9 +1303,10 @@ export default function App() {
             {view === 'dashboard' && (
               <motion.div 
                 key="dashboard"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                variants={VIEW_TRANSITION}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="flex-1 flex flex-col gap-6 overflow-hidden"
               >
                 <div className="flex items-center justify-between shrink-0">
@@ -1634,8 +1651,10 @@ export default function App() {
             {view === 'public_feed' && (
               <motion.div 
                 key="public_feed"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
+                variants={VIEW_TRANSITION}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="flex-1 overflow-y-auto"
               >
                 <div className="max-w-4xl mx-auto space-y-8">
@@ -1686,9 +1705,10 @@ export default function App() {
             {view === 'track' && (
               <motion.div 
                 key="track"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.05 }}
+                variants={VIEW_TRANSITION}
+                initial="initial"
+                animate="animate"
+                exit="exit"
                 className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full gap-8"
               >
                 <div className="text-center">
