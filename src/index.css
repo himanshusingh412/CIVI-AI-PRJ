@@ -61,11 +61,60 @@
   --color-chart-grid: #E2E8F0;
   --color-chart-axis: #64748B;
 
-  /* z-index scale */
-  --z-dropdown: 10;
+  /* ── Geometry scale ──────────────────────────────────────────
+     One radius ladder. Components reference these, never raw px,
+     so the product's "roundness" can be retuned in one place. */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* ── Spacing (4pt rhythm) ─────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* ── Motion ───────────────────────────────────────────────────
+     Durations follow the interaction/transition split: micro
+     feedback stays under ~200ms so it reads as instant; page-level
+     motion gets room to express spatial continuity. */
+  --dur-instant: 100ms;
+  --dur-fast: 160ms;
+  --dur-normal: 240ms;
+  --dur-slow: 360ms;
+  --dur-page: 480ms;
+  --dur-splash: 720ms;
+
+  /* Ease-out for entrances (decelerate into place), ease-in for
+     exits, spring for anything the user physically manipulates. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Elevation ────────────────────────────────────────────── */
+  --shadow-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.10);
+  --shadow-2: 0 2px 4px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.08);
+  --shadow-3: 0 4px 8px rgb(15 23 42 / 0.07), 0 12px 28px rgb(15 23 42 / 0.12);
+  --shadow-4: 0 8px 16px rgb(15 23 42 / 0.08), 0 24px 56px rgb(15 23 42 / 0.16);
+
+  /* ── z-index scale ────────────────────────────────────────── */
+  --z-base: 0;
+  --z-raised: 10;
   --z-sticky: 20;
-  --z-overlay: 30;
-  --z-modal: 50;
+  --z-nav: 30;
+  --z-dropdown: 40;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+  --z-splash: 90;
 }
 
 /* Dark theme: override semantic tokens only. Never remap Tailwind's
@@ -109,6 +158,13 @@
   --color-chart-5: #FBBF24;
   --color-chart-grid: #1E293B;
   --color-chart-axis: #94A3B8;
+
+  /* Dark surfaces need deeper, tighter shadows — the light-mode
+     values read as grey haze instead of elevation. */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-2: 0 4px 14px rgb(0 0 0 / 0.55);
+  --shadow-3: 0 12px 34px rgb(0 0 0 / 0.62);
+  --shadow-4: 0 24px 64px rgb(0 0 0 / 0.7);
 }
 
 @layer base {
@@ -325,24 +381,20 @@ input:-webkit-autofill:focus {
   66% { transform: translate(-3%, -4%) scale(0.96); }
 }
 
-/* ── Elevation scale ───────────────────────────────────────────
-   One consistent ladder instead of ad-hoc shadow-lg/xl/2xl. Dark
-   mode needs deeper, tighter shadows because ambient light is low. */
-.elev-1 { box-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.10); }
-.elev-2 { box-shadow: 0 2px 4px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.08); }
-.elev-3 { box-shadow: 0 4px 8px rgb(15 23 42 / 0.07), 0 12px 28px rgb(15 23 42 / 0.12); }
-.dark .elev-1 { box-shadow: 0 1px 2px rgb(0 0 0 / 0.5); }
-.dark .elev-2 { box-shadow: 0 4px 14px rgb(0 0 0 / 0.55); }
-.dark .elev-3 { box-shadow: 0 12px 34px rgb(0 0 0 / 0.62); }
+/* ── Elevation ──────────────────────────────────────────────── */
+.elev-1 { box-shadow: var(--shadow-1); }
+.elev-2 { box-shadow: var(--shadow-2); }
+.elev-3 { box-shadow: var(--shadow-3); }
+.elev-4 { box-shadow: var(--shadow-4); }
 
 /* Cards lift on hover, settle on press. Transform-only so no reflow.
    Hover lift is skipped on touch devices, which have no hover state. */
 .lift {
-  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--dur-normal) var(--ease-out),
+              box-shadow var(--dur-normal) var(--ease-out);
 }
 @media (hover: hover) {
-  .lift:hover { transform: translateY(-2px); }
+  .lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-3); }
 }
 .lift:active { transform: translateY(0) scale(0.995); }
 
@@ -350,6 +402,95 @@ input:-webkit-autofill:focus {
 button, a, [role="button"], label, input, select, textarea {
   touch-action: manipulation;
 }
+
+/* ══════════════════════════════════════════════════════════
+   MICRO-INTERACTIONS
+   Every interactive surface acknowledges input within ~160ms.
+   ══════════════════════════════════════════════════════════ */
+
+/* Press feedback for anything not using the shared Button. */
+.press { transition: transform var(--dur-fast) var(--ease-out); }
+.press:active { transform: scale(0.96); }
+
+/* Inputs: the focus ring grows from the field rather than snapping on,
+   which reads as the field "waking up" instead of flashing. */
+.field {
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-normal) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+.field:focus-visible,
+.field:focus {
+  border-color: var(--color-cta);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-cta) 18%, transparent);
+}
+
+/* Nav items: an underline/indicator that slides in from the leading edge. */
+.nav-item { position: relative; transition: color var(--dur-fast) var(--ease-out); }
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-cta);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur-normal) var(--ease-spring);
+}
+.nav-item[aria-current="page"]::before,
+.nav-item.is-active::before { transform: scaleY(1); }
+
+/* Gradient border on hover — drawn with a mask so it doesn't
+   change layout or require a wrapper element. */
+.gradient-border {
+  position: relative;
+  isolation: isolate;
+}
+.gradient-border::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--color-cta), var(--color-saffron));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity var(--dur-normal) var(--ease-out);
+  pointer-events: none;
+}
+.gradient-border:hover::after,
+.gradient-border:focus-within::after { opacity: 1; }
+
+/* Success / error state pulses — communicate the outcome, then stop. */
+@keyframes successPop {
+  0% { transform: scale(0.8); opacity: 0; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.state-success { animation: successPop var(--dur-slow) var(--ease-spring) both; }
+
+@keyframes errorShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+.state-error { animation: errorShake var(--dur-slow) var(--ease-in-out) both; }
+
+/* Staggered list entrance — 40ms apart, capped so long lists
+   don't leave the last item waiting seconds to appear. */
+.stagger > * { animation: fadeUp var(--dur-normal) var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(n+6) { animation-delay: 200ms; }
 
 /* Premium button sheen sweep on hover */
 .btn-sheen { position: relative; overflow: hidden; isolation: isolate; }
@@ -499,12 +640,82 @@ button, a, [role="button"], label, input, select, textarea {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Dynamic lighting — a specular sweep across the cube faces, offset per
+   face so the highlight travels around the object as it rotates. */
+.cube-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.45) 48%, transparent 62%);
+  opacity: 0;
+  animation: faceLight 9s var(--ease-in-out) infinite;
+}
+.cube-face.right::after  { animation-delay: -1.5s; }
+.cube-face.back::after   { animation-delay: -3s; }
+.cube-face.left::after   { animation-delay: -4.5s; }
+.cube-face.top::after    { animation-delay: -6s; }
+.cube-face.bottom::after { animation-delay: -7.5s; }
+@keyframes faceLight {
+  0%, 70%, 100% { opacity: 0; }
+  20%, 35% { opacity: 1; }
+}
+
+/* Particle field. Positions are set inline from a seeded generator so the
+   layout is deterministic (no hydration/render mismatch) while still
+   looking organic. Drift is transform-only. */
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--color-cta);
+  opacity: 0;
+  animation: particleDrift var(--p-dur, 14s) var(--ease-in-out) var(--p-delay, 0s) infinite;
+  will-change: transform, opacity;
+}
+@keyframes particleDrift {
+  0%   { transform: translate3d(0, 12px, 0) scale(0.6); opacity: 0; }
+  15%  { opacity: var(--p-opacity, 0.5); }
+  85%  { opacity: var(--p-opacity, 0.5); }
+  100% { transform: translate3d(var(--p-dx, 14px), -56px, 0) scale(1); opacity: 0; }
+}
+
+/* Glass shards floating at different depths — the parallax layer.
+   --px/--py are written by the pointer handler (rAF-throttled). */
+.glass-shard {
+  position: absolute;
+  border-radius: var(--radius-lg);
+  background: rgb(255 255 255 / 0.07);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transform: translate3d(
+    calc(var(--px, 0) * var(--depth, 1) * 1px),
+    calc(var(--py, 0) * var(--depth, 1) * 1px),
+    0
+  ) rotate(var(--rot, 0deg));
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+
+/* Splash exit — scales up and fades as the app fades in underneath,
+   so the handoff reads as one continuous move rather than a cut. */
+.splash-exit {
+  animation: splashOut var(--dur-splash) var(--ease-in-out) forwards;
+  pointer-events: none;
+}
+@keyframes splashOut {
+  to { opacity: 0; transform: scale(1.06); filter: blur(6px); }
+}
+
 /* Vestibular safety: freeze the scene at a readable angle rather than
    just speeding it up, so it reads as a deliberate static illustration. */
 @media (prefers-reduced-motion: reduce) {
   .cube-3d { animation: none !important; transform: rotateX(-22deg) rotateY(-38deg); }
-  .orbit-ring, .cube-shadow, .progress-track::after, .fade-up { animation: none !important; }
+  .orbit-ring, .cube-shadow, .progress-track::after, .fade-up,
+  .particle, .cube-face::after, .stagger > * { animation: none !important; }
+  .particle { opacity: 0.35; }
+  .glass-shard { transform: none !important; transition: none; }
   .progress-track::after { transform: none; opacity: 0.85; }
+  .splash-exit { animation: none; opacity: 0; }
 }
 
 /* Floating micro-interaction for hero/decorative icons */

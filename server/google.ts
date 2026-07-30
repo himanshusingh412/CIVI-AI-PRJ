@@ -9,11 +9,8 @@
 import { OAuth2Client } from 'google-auth-library';
 import { maskEmail } from './email.js';
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const client = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
-
 export const googleAuthStatus = () => ({
-  enabled: !!GOOGLE_CLIENT_ID,
+  enabled: !!(process.env.GOOGLE_CLIENT_ID || ''),
 });
 
 export type GoogleVerifyResult =
@@ -21,7 +18,8 @@ export type GoogleVerifyResult =
   | { ok: false; status: number; error: string; message: string };
 
 export async function verifyGoogleCredential(idToken: string): Promise<GoogleVerifyResult> {
-  if (!client) {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
+  if (!googleClientId) {
     return {
       ok: false, status: 501, error: 'not_configured',
       message: 'Google sign-in is not configured on this server yet.',
@@ -32,7 +30,8 @@ export async function verifyGoogleCredential(idToken: string): Promise<GoogleVer
   }
 
   try {
-    const ticket = await client.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_ID });
+    const client = new OAuth2Client(googleClientId);
+    const ticket = await client.verifyIdToken({ idToken, audience: googleClientId });
     const payload = ticket.getPayload();
     if (!payload?.email) {
       return { ok: false, status: 401, error: 'no_email', message: 'Google account has no email on file.' };
