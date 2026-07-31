@@ -28,3 +28,5 @@ src/__eb_test.tsx
 .dbcheck.mjs
 .pt/
 .pv/
+# Throwaway verification probe; the sandbox could not unlink it. Safe to delete.
+_probe.mjs

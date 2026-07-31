@@ -20,7 +20,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * Load .env the same way the server does.
+ *
+ * Without this the script only saw variables already exported in the shell,
+ * so a perfectly good DATABASE_URL sitting in .env produced "DATABASE_URL is
+ * not set" while `npm run dev:full` connected to Postgres fine — the two
+ * disagreeing about the same file is a confusing way to fail.
+ *
+ * Resolved relative to this file, not cwd, so `node db/seed.mjs` works from
+ * anywhere in the repo.
+ */
+import 'dotenv/config';
+
 const DIR = path.dirname(fileURLToPath(import.meta.url));
+if (!process.env.DATABASE_URL) {
+  const dotenvPath = path.join(DIR, '..', '.env');
+  if (fs.existsSync(dotenvPath)) {
+    const { config } = await import('dotenv');
+    config({ path: dotenvPath });
+  }
+}
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry');
 const RESET = argv.includes('--reset');
@@ -342,13 +362,103 @@ async function seed(exec) {
   };
 }
 
+// ──────────────────── SQL statement splitter ────────────────────
+/**
+ * Split a .sql file into individual statements.
+ *
+ * Required because `@neondatabase/serverless`'s `neon()` HTTP driver sends
+ * every query as a PREPARED statement, and Postgres refuses to parse more
+ * than one command in one of those:
+ *
+ *   NeonDbError: cannot insert multiple commands into a prepared statement
+ *
+ * PGlite's `exec()` accepts multi-statement SQL happily, which is exactly
+ * why `--dry` passed while the real path was broken. Both branches now use
+ * this splitter so the dry run actually exercises the shape of the real one.
+ *
+ * `split(';')` is not good enough: 001_schema.sql contains dollar-quoted
+ * function bodies whose semicolons would shred the statements. This tracks
+ * every context in which a `;` is NOT a terminator.
+ */
+function splitStatements(text) {
+  const out = [];
+  let buf = '';
+  let i = 0;
+
+  while (i < text.length) {
+    const two = text.slice(i, i + 2);
+
+    if (two === '--') {                       // line comment
+      const nl = text.indexOf('\n', i);
+      const end = nl === -1 ? text.length : nl;
+      buf += text.slice(i, end);
+      i = end;
+      continue;
+    }
+    if (two === '/*') {                       // block comment (Postgres nests)
+      let depth = 1; let j = i + 2;
+      while (j < text.length && depth > 0) {
+        if (text.slice(j, j + 2) === '/*') { depth++; j += 2; }
+        else if (text.slice(j, j + 2) === '*/') { depth--; j += 2; }
+        else j++;
+      }
+      buf += text.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (text[i] === "'" || text[i] === '"') { // quoted literal / identifier
+      const q = text[i];
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === q) {
+          if (text[j + 1] === q) { j += 2; continue; } // '' escape
+          j++; break;
+        }
+        if (q === "'" && text[j] === '\\') { j += 2; continue; }
+        j++;
+      }
+      buf += text.slice(i, j);
+      i = j;
+      continue;
+    }
+    const dollar = /^\$[A-Za-z_0-9]*\$/.exec(text.slice(i));
+    if (dollar) {                             // $$ ... $$ or $tag$ ... $tag$
+      const tag = dollar[0];
+      const close = text.indexOf(tag, i + tag.length);
+      const j = close === -1 ? text.length : close + tag.length;
+      buf += text.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (text[i] === ';') {                    // top-level terminator
+      if (buf.trim()) out.push(buf.trim());
+      buf = '';
+      i++;
+      continue;
+    }
+    buf += text[i];
+    i++;
+  }
+
+  if (buf.trim()) out.push(buf.trim());
+  return out;
+}
+
+/** Apply a .sql file one statement at a time. */
+async function applySqlFile(file, exec) {
+  const statements = splitStatements(fs.readFileSync(file, 'utf8'));
+  for (const stmt of statements) await exec(stmt);
+  return statements.length;
+}
+
 // ───────────────────────── runner ─────────────────────────
 const t0 = Date.now();
 
 if (DRY) {
   const { PGlite } = await import('@electric-sql/pglite');
   const db = await new PGlite();
-  await db.exec(fs.readFileSync(path.join(DIR, '001_schema.sql'), 'utf8'));
+  const n = await applySqlFile(path.join(DIR, '001_schema.sql'), s => db.exec(s));
+  console.log(`  schema: ${n} statements applied one at a time (same as the live path)`);
   const counts = await seed(s => db.exec(s));
   console.log('  seeded (dry run, in-memory Postgres):');
   for (const [k, v] of Object.entries(counts)) console.log(`    ${k.padEnd(14)} ${v}`);
@@ -380,7 +490,8 @@ if (DRY) {
   const { neon } = await import('@neondatabase/serverless');
   const sql = neon(process.env.DATABASE_URL);
   const exec = async s => { await sql.query(s); };
-  await exec(fs.readFileSync(path.join(DIR, '001_schema.sql'), 'utf8'));
+  const n = await applySqlFile(path.join(DIR, '001_schema.sql'), exec);
+  console.log(`  schema: ${n} statements applied`);
   const counts = await seed(exec);
   console.log('  seeded:');
   for (const [k, v] of Object.entries(counts)) console.log(`    ${k.padEnd(14)} ${v}`);
