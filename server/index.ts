@@ -41,6 +41,7 @@ import { sseHandler, subscriberCount } from './events.js';
 import { scoreDuplicates, classify } from './duplicates.js';
 import { runSlaSweep, startSlaScheduler } from './sla.js';
 import { mediaRouter, serveMedia } from './media.js';
+import { complaintsRouter } from './complaints.js';
 import { seedDemoData, storeStatus, initStore, store } from './store.js';
 
 const PORT = Number(process.env.PORT || 8787);
@@ -330,6 +331,11 @@ app.get('/api/config', (_req, res) => {
     emailOtpEnabled: true,
   });
 });
+
+// ───────────────────────── citizen complaints ─────────────────────────
+// Mounted BEFORE the /:id/duplicates route below so both live under the
+// same prefix without the router swallowing it.
+app.use('/api/complaints', requireAuth, complaintsRouter);
 
 // ───────────────────────── complaint photos ─────────────────────────
 // Upload requires a session; serving does not check ownership yet — see the

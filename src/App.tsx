@@ -51,6 +51,8 @@ import L from 'leaflet';
 import { Complaint, ViewType, ChatMessage, SystemNotification } from './types';
 import { useI18n } from './i18n/I18nContext';
 import { LanguagePicker } from './components/LanguagePicker';
+import { useLiveComplaints } from './hooks/useLiveComplaints';
+import { createComplaint, rateComplaint } from './services/complaintService';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import { LoginScreen } from './components/LoginScreen';
@@ -142,7 +144,22 @@ export default function App() {
   // Language now lives in I18nProvider so the picker, <html lang/dir> and
   // every component agree. `t` falls back to English per key.
   const { lang, t } = useI18n();
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  /**
+   * Complaints come from the database and stay current over SSE.
+   *
+   * This was `useState<Complaint[]>([])` seeded with three hardcoded rows:
+   * a refresh erased anything a citizen filed, and the citizen and admin
+   * portals were two unrelated arrays that could never see each other.
+   */
+  const {
+    complaints,
+    loading: complaintsLoading,
+    error: complaintsError,
+    live: complaintsLive,
+    refresh: refreshComplaints,
+    patch: patchComplaint,
+    prepend: prependComplaint,
+  } = useLiveComplaints({ limit: 300 });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [chatStep, setChatStep] = useState<string | null>(null);
@@ -198,26 +215,14 @@ export default function App() {
     };
   }, []);
 
-  // Auto-escalation checker
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      setComplaints(prev => {
-        // Only produce a new array when something actually changed, so this
-        // timer doesn't re-render the whole dashboard once a minute.
-        let changed = false;
-        const next = prev.map(c => {
-          if (c.status !== 'Resolved' && !c.escalated && now > c.deadline) {
-            changed = true;
-            return { ...c, escalated: true, priority: 'Critical' as const };
-          }
-          return c;
-        });
-        return changed ? next : prev;
-      });
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
+  /**
+   * The client-side auto-escalation timer that lived here has been removed.
+   *
+   * It flipped `escalated` in this browser's state only — the server never
+   * heard about it, other users never saw it, and closing the tab undid it.
+   * An SLA breach that exists only in one person's tab is not an escalation.
+   * server/sla.ts now sweeps centrally and the result arrives over SSE.
+   */
 
   // Initial notifications
   useEffect(() => {
@@ -250,13 +255,6 @@ export default function App() {
 
   // Initialize with seed data
   useEffect(() => {
-    const seeds: Complaint[] = [
-      { id: 'CIV-20260430-001', category: 'Road & Infrastructure', description: 'Large pothole on MG Road near Bus Stand causing accidents', status: 'In Progress', priority: 'High', sentiment: 'Frustrated', officer: OFFICERS[0], date: '30/04/2026', deadline: Date.now() + 86400000, timestamp: Date.now() - 86400000, lat: 28.6139, lng: 77.2090 },
-      { id: 'CIV-20260429-002', category: 'Water Supply', description: 'No water supply for 3 days in Sector 14 residential area', status: 'Pending', priority: 'Medium', sentiment: 'Neutral', officer: OFFICERS[1], date: '29/04/2026', deadline: Date.now() + 43200000, timestamp: Date.now() - 172800000, lat: 28.6210, lng: 77.2100 },
-      { id: 'CIV-20260428-003', category: 'Sanitation', description: 'Garbage not collected for a week near Park Street', status: 'Resolved', priority: 'Low', sentiment: 'Polite', officer: OFFICERS[2], date: '28/04/2026', deadline: Date.now() - 10000, timestamp: Date.now() - 259200000, lat: 28.6100, lng: 77.2200 },
-    ];
-    setComplaints(seeds);
-    
     // Greeting
     botReply(RESPONSES[lang].greeting, 500);
   }, []);
@@ -594,7 +592,30 @@ export default function App() {
         lng: 77.2090 + (Math.random() - 0.5) * 0.1
       };
       
-      setComplaints(prev => [newComplaint, ...prev]);
+      // Persist first, then show. Pushing into local state and calling it
+      // filed is what made complaints vanish on refresh.
+      prependComplaint(newComplaint);
+      void createComplaint({
+        category: newComplaint.category,
+        description: newComplaint.description,
+        priority: newComplaint.priority,
+        department: newComplaint.department,
+        lat: newComplaint.lat,
+        lng: newComplaint.lng,
+        state: 'Delhi',
+        district: 'New Delhi',
+      } as any)
+        .then(({ complaint, duplicate }) => {
+          void refreshComplaints();
+          if (duplicate) {
+            botReply(
+              `This looks like it may already be reported (${duplicate.confidence}% match with ${duplicate.of}: ${duplicate.reasons.join(', ')}). ` +
+              `Your complaint has still been registered separately and will be tracked.`,
+              900,
+            );
+          }
+        })
+        .catch(err => showToast(err.message || 'Could not save the complaint.'));
       setChatStep(null);
       setPendingComplaint({});
       setAiSuggestedCategory(null);
@@ -617,7 +638,7 @@ export default function App() {
   };
 
   const updateComplaintStatus = (id: string, nextStatus: Complaint['status']) => {
-    setComplaints(prev => prev.map(c => c.id === id ? { ...c, status: nextStatus } : c));
+    patchComplaint(id, { status: nextStatus });
     showToast(`Status updated to ${nextStatus}`);
     
     if (nextStatus === 'Resolved') {
@@ -1896,7 +1917,9 @@ export default function App() {
             complaint={showFeedbackModal} 
             onClose={() => setShowFeedbackModal(null)} 
             onSubmit={(rating: number, feedback: string) => {
-              setComplaints(prev => prev.map(c => c.id === showFeedbackModal.id ? { ...c, rating, feedback } : c));
+              patchComplaint(showFeedbackModal.id, { rating, feedback });
+              void rateComplaint(showFeedbackModal.id, rating)
+                .catch(err => showToast(err.message || 'Could not save your rating.'));
               showToast("Feedback submitted!");
               setShowFeedbackModal(null);
             }}
