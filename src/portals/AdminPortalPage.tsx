@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { LoginScreen } from '../components/LoginScreen';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { PageBackground } from '../components/backgrounds/PageBackground';
 import { RequireAdmin } from './RequireAdmin';
 import { Moon, Sun, LogOut } from 'lucide-react';
 
@@ -22,14 +23,19 @@ export function AdminPortalPage() {
 
   // Staff still authenticate through the same identity provider; the
   // difference is what the session is then authorised to do.
-  if (status !== 'authenticated') return <LoginScreen onSignedIn={onSignedIn} />;
+  // `audience="staff"` suppresses the citizen/staff chooser: arriving at this
+  // URL already answered that question.
+  if (status !== 'authenticated') return <LoginScreen onSignedIn={onSignedIn} audience="staff" />;
 
   return (
     <RequireAdmin>
       <div
-        className="min-h-screen flex flex-col"
+        className="relative isolate min-h-screen flex flex-col"
         style={{ background: 'var(--color-bg-main)', color: 'var(--color-content)' }}
       >
+        {/* Staff live in this screen for a whole shift, so the admin variant
+            is deliberately the flattest and dimmest of the four. */}
+        <PageBackground variant="admin" />
         <header
           className="h-16 glass border-b px-4 sm:px-8 flex items-center justify-between shrink-0"
           style={{ borderColor: 'var(--color-border)' }}

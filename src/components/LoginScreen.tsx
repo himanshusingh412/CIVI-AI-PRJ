@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { AlertTriangle, CheckCircle2, ChevronRight, Mail, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, Mail, ShieldCheck, User } from 'lucide-react';
 import { Button } from './Button';
+import { PageBackground } from './backgrounds/PageBackground';
 import { useTheme } from '../context/ThemeContext';
 import {
   requestOtp,
@@ -21,8 +23,30 @@ const BUILD_TIME_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ?? 
 
 type Step = 'identify' | 'otp';
 
-export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void }) {
+/**
+ * Which door the person came through.
+ *
+ * This is a routing hint, NOT an authorisation claim. Picking "staff" grants
+ * nothing — it navigates to /portal/admin, where RequireAdmin and the
+ * server's RBAC decide what the session may actually do. Anyone can click
+ * it; that is fine, because the button is not what protects the portal.
+ */
+export type Audience = 'citizen' | 'staff';
+
+export function LoginScreen({
+  onSignedIn,
+  /**
+   * Set by the admin portal, which already knows who it is serving. Left
+   * undefined on the citizen portal, which is what makes the chooser render.
+   */
+  audience: fixedAudience,
+}: {
+  onSignedIn: (u: AuthUser) => void;
+  audience?: Audience;
+}) {
   const { isDark } = useTheme();
+  const navigate = useNavigate();
+  const [audience, setAudience] = useState<Audience | null>(fixedAudience ?? null);
 
   const [googleClientId, setGoogleClientId] = useState<string>(BUILD_TIME_CLIENT_ID);
   const [configLoading, setConfigLoading] = useState(!BUILD_TIME_CLIENT_ID);
@@ -239,15 +263,102 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
     setAttemptsLeft(null);
   };
 
+  /**
+   * Step 0 — who are you here as?
+   *
+   * Rendered only on the citizen portal. The staff option is a plain link to
+   * /portal/admin rather than a different auth path: both audiences
+   * authenticate through the same identity provider, and the difference is
+   * entirely what the resulting session is authorised to do.
+   */
+  if (audience === null) {
+    return (
+      <div
+        className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 relative isolate overflow-hidden"
+        style={{ background: 'var(--color-bg-main)' }}
+      >
+        <PageBackground variant="auth" />
+
+        <motion.main
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+          className="surface bordered rounded-2xl p-7 sm:p-9 w-full max-w-md shadow-2xl relative z-10"
+        >
+          <header className="text-center mb-7">
+            <div
+              aria-hidden="true"
+              className="float-y w-14 h-14 rounded-xl grid place-items-center mx-auto mb-4 text-white shadow-lg bg-gradient-to-br from-cta to-saffron"
+            >
+              <ShieldCheck size={28} strokeWidth={2} />
+            </div>
+            <h1 className="font-display font-bold text-2xl tracking-tight text-content">Welcome to CivicAI</h1>
+            <p className="text-sm mt-1.5 text-content-3">How would you like to continue?</p>
+          </header>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => setAudience('citizen')}
+              className="press w-full flex items-center gap-4 p-4 rounded-xl bordered surface-2 text-left
+                         hover:border-[var(--color-cta)] transition-colors"
+            >
+              <span
+                aria-hidden="true"
+                className="w-11 h-11 shrink-0 rounded-xl grid place-items-center text-white bg-gradient-to-br from-cta to-cta-hover"
+              >
+                <User size={20} />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-display font-bold text-[15px] text-content">I'm a citizen</span>
+                <span className="block text-[13px] text-content-3 mt-0.5">
+                  Report an issue and track your complaints
+                </span>
+              </span>
+              <ChevronRight size={18} className="ml-auto shrink-0 text-content-3" aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/portal/admin')}
+              className="press w-full flex items-center gap-4 p-4 rounded-xl bordered surface-2 text-left
+                         hover:border-[var(--color-saffron)] transition-colors"
+            >
+              <span
+                aria-hidden="true"
+                className="w-11 h-11 shrink-0 rounded-xl grid place-items-center text-white bg-gradient-to-br from-saffron to-saffron-light"
+              >
+                <Building2 size={20} />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-display font-bold text-[15px] text-content">I'm government staff</span>
+                <span className="block text-[13px] text-content-3 mt-0.5">
+                  Triage, assign and resolve grievances
+                </span>
+              </span>
+              <ChevronRight size={18} className="ml-auto shrink-0 text-content-3" aria-hidden="true" />
+            </button>
+          </div>
+
+          <p className="text-[12px] text-content-3 text-center mt-6 leading-relaxed">
+            Staff access is granted by role, not by this choice. Signing in here does not
+            create or elevate an account.
+          </p>
+        </motion.main>
+      </div>
+    );
+  }
+
   return (
     <div
-      className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 relative overflow-hidden"
+      className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 relative isolate overflow-hidden"
       style={{ background: 'var(--color-bg-main)' }}
     >
-      <div aria-hidden="true" className="aurora-bg opacity-40">
-        <div className="aurora-blob absolute -top-[15%] -left-[10%] w-[45%] h-[45%] bg-cta" />
-        <div className="aurora-blob absolute -bottom-[15%] -right-[10%] w-[45%] h-[45%] bg-saffron" style={{ animationDelay: '5s' }} />
-      </div>
+      {/* The front door. Replaces the two CSS blur blobs that used to sit
+          here: they animated `filter` on a 45vw element, which is a
+          full-viewport repaint every frame — more expensive than the
+          shader that replaced them, and it only existed in one theme. */}
+      <PageBackground variant="auth" />
 
       <motion.main
         initial={{ opacity: 0, y: 16 }}
@@ -262,12 +373,28 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (u: AuthUser) => void 
           >
             <ShieldCheck size={28} strokeWidth={2} />
           </div>
-          <h1 className="font-display font-bold text-2xl tracking-tight text-content">Sign in to CivicAI</h1>
+          <h1 className="font-display font-bold text-2xl tracking-tight text-content">
+            {audience === 'staff' ? 'Staff sign-in' : 'Sign in to CivicAI'}
+          </h1>
           <p className="text-sm mt-1.5 text-content-3">
             {step === 'identify'
               ? 'Continue with Google, or use a one-time email code'
               : 'Enter the code we emailed you'}
           </p>
+
+          {/* Escape hatch back to the chooser. On the admin portal this links
+              to the citizen app instead, because there is no chooser there. */}
+          {step === 'identify' && (
+            <button
+              type="button"
+              onClick={() => (fixedAudience ? navigate('/') : setAudience(null))}
+              className="press inline-flex items-center gap-1.5 mt-3 text-[12px] font-bold uppercase
+                         tracking-wider text-content-3 hover:text-cta transition-colors"
+            >
+              <ArrowLeft size={13} aria-hidden="true" />
+              {fixedAudience ? 'Citizen sign-in' : 'Change'}
+            </button>
+          )}
         </header>
 
         {/* Live region so screen readers announce errors and status changes */}

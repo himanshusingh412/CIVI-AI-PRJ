@@ -56,6 +56,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Button } from './components/Button';
 import { Skeleton, SkeletonRegion } from './components/Skeleton';
 import { MobileNav } from './components/MobileNav';
+import { PageBackground } from './components/backgrounds/PageBackground';
 import { useThemeTokens } from './hooks/useThemeTokens';
 import { sendChat, getBrowserLocation, type ChatTurn } from './services/chatService';
 import { OFFICERS, RESPONSES } from './constants';
@@ -761,18 +762,16 @@ export default function App() {
 
   return (
     <div
-      className="relative flex flex-col h-screen overflow-hidden transition-colors duration-300"
+      className="relative isolate flex flex-col h-screen overflow-hidden transition-colors duration-300"
       style={{ background: 'var(--color-bg-main)', color: 'var(--color-content)' }}
     >
       <a href="#main-content" className="skip-link">Skip to main content</a>
 
-      {/* Ambient premium depth — dark mode only, decorative */}
-      {isDarkMode && (
-        <div aria-hidden="true" className="aurora-bg fixed inset-0 z-0">
-          <div className="aurora-blob w-[32rem] h-[32rem] bg-cta -top-40 -left-40" />
-          <div className="aurora-blob w-[28rem] h-[28rem] bg-saffron top-1/3 -right-40" style={{ animationDelay: '4s' }} />
-        </div>
-      )}
+      {/* Ambient depth for the citizen shell. Previously this was blur blobs
+          gated on `isDarkMode`, which left light mode visually flat. Threads
+          takes its colour as a uniform, so one component now serves both
+          themes instead of dark getting the only treatment. */}
+      <PageBackground variant="app" />
 
       {/* Top Navigation */}
       <nav
@@ -1381,8 +1380,13 @@ export default function App() {
                           <tbody className="divide-y divide-[var(--color-border)]">
                             {filteredComplaints.length === 0 ? (
                               <tr>
-                                <td colSpan={6} className="px-6 py-12 text-center text-content-3 text-sm">
-                                  No complaints found matching your criteria.
+                                <td colSpan={6} className="p-0">
+                                  <div className="relative isolate overflow-hidden px-6 py-14 text-center">
+                                    <PageBackground variant="empty" />
+                                    <p className="text-content-3 text-sm">
+                                      No complaints found matching your criteria.
+                                    </p>
+                                  </div>
                                 </td>
                               </tr>
                             ) : (

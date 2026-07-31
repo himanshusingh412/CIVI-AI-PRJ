@@ -11,6 +11,11 @@
  */
 import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
+import fs from 'node:fs';
+
+// `--preview` serves the production build instead of the dev server, so the
+// exact bundle that ships can be exercised against a live API.
+const PREVIEW = process.argv.includes('--preview');
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const API_PORT = Number(process.env.PORT || 8787);
@@ -62,8 +67,22 @@ process.on('SIGTERM', shutdown);
 
 // Small delay so the freed ports are actually released before rebinding.
 setTimeout(() => {
+  // The API always starts here. Starting the frontend alone is the single
+  // most common way this app appears broken: every /api call falls through
+  // to Vite's HTML and the UI reports "service unavailable".
   run('api', 'npx', ['tsx', 'watch', 'server/index.ts']);
-  run('web', 'npx', ['vite', '--port', String(WEB_PORT)]);
-  console.log(`\n[dev] api :${API_PORT}  ·  web :${WEB_PORT}`);
+
+  if (PREVIEW) {
+    if (!fs.existsSync(path.join(ROOT, 'dist', 'index.html'))) {
+      console.error('[dev] no dist/ found — run "npm run build" first.');
+      shutdown();
+      return;
+    }
+    run('web', 'npx', ['vite', 'preview', '--port', String(WEB_PORT)]);
+  } else {
+    run('web', 'npx', ['vite', '--port', String(WEB_PORT)]);
+  }
+
+  console.log(`\n[dev] api :${API_PORT}  ·  web :${WEB_PORT}  ${PREVIEW ? '(production build)' : '(dev server)'}`);
   console.log('[dev] run "npm run doctor" in another terminal if something looks wrong\n');
 }, 400);
