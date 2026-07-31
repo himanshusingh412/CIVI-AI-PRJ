@@ -451,6 +451,10 @@ CREATE OR REPLACE VIEW v_active_officers   AS SELECT * FROM officers   WHERE del
 -- source of truth, and the flat row shape the app already expects is
 -- derived here rather than duplicated as a second physical table.
 -- ─────────────────────────────────────────────────────────────────────
+-- Image bytes. See server/media.ts for why these live in Postgres rather
+-- than object storage at this stage, and what the exit path looks like.
+ALTER TABLE complaint_media ADD COLUMN IF NOT EXISTS content BYTEA;
+
 CREATE OR REPLACE VIEW complaints_api AS
 SELECT
   c.reference_no                                    AS id,

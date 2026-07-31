@@ -37,7 +37,11 @@ import {
 } from './limits.js';
 import { handleChat } from './chat.js';
 import { adminRouter } from './admin.js';
-import { seedDemoData, storeStatus, initStore } from './store.js';
+import { sseHandler, subscriberCount } from './events.js';
+import { scoreDuplicates, classify } from './duplicates.js';
+import { runSlaSweep, startSlaScheduler } from './sla.js';
+import { mediaRouter, serveMedia } from './media.js';
+import { seedDemoData, storeStatus, initStore, store } from './store.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -327,6 +331,55 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
+// ───────────────────────── complaint photos ─────────────────────────
+// Upload requires a session; serving does not check ownership yet — see the
+// note in media.ts. Ids are unguessable UUIDs, which is obscurity, not
+// authorisation.
+app.use('/api/media', requireAuth, mediaRouter);
+app.get('/api/media/:id', requireAuth, serveMedia);
+
+// ───────────────────────── real-time ─────────────────────────
+/**
+ * SSE stream. requireAuth so an anonymous client cannot learn that activity
+ * is happening; the payloads carry ids only, and clients re-fetch through
+ * the normal scoped endpoints.
+ */
+app.get('/api/events', requireAuth, sseHandler);
+
+// ───────────────────────── duplicate detection ─────────────────────────
+/**
+ * Candidates that appear to describe the same real-world problem.
+ * Read-only and advisory: linking is a human decision, so this never
+ * mutates anything.
+ */
+app.get('/api/complaints/:id/duplicates', requireAuth, async (req, res) => {
+  const all = await store.list();
+  const target = all.find(c => c.id === req.params.id);
+  if (!target) return res.status(404).json({ error: 'not_found' });
+
+  const scored = scoreDuplicates(
+    { category: target.category, description: target.description, lat: target.lat, lng: target.lng,
+      createdAt: target.createdAt },
+    all.filter(c => c.id !== target.id).map(c => ({
+      id: c.id, category: c.category, description: c.description,
+      lat: c.lat, lng: c.lng, createdAt: c.createdAt })),
+  );
+
+  res.json({
+    id: target.id,
+    matches: scored
+      .filter(m => classify(m.score) !== 'distinct')
+      .slice(0, 10)
+      .map(m => ({
+        id: m.id,
+        verdict: classify(m.score),
+        confidence: Math.round(m.score * 100),
+        distanceM: m.distanceM === null ? null : Math.round(m.distanceM),
+        reasons: m.reasons,
+      })),
+  });
+});
+
 // ───────────────────────── admin portal ─────────────────────────
 // requireAuth first: admin RBAC assumes an authenticated session exists.
 app.use('/api/admin', requireAuth, adminRouter);
@@ -341,11 +394,19 @@ app.get('/api/health', (_req, res) =>
     bot: botStatus(),
     sessions: sessionStats(),
     store: storeStatus(),
+    realtime: { subscribers: subscriberCount() },
     budget: budgetStatus(),
     concurrency: concurrencyStatus(),
     limits: { ...LIMITS, auth: AUTH_LIMITS },
   }),
 );
+
+app.post('/api/admin/sla/sweep', requireAuth, async (_req, res) => {
+  // Exposed so a cron trigger can drive the sweep where no long-lived
+  // process exists (see the deployment note in sla.ts).
+  const breaches = await runSlaSweep();
+  res.json({ escalated: breaches.length, breaches });
+});
 
 app.use('/api', (_req, res) =>
   res.status(404).json({ error: 'not_found', message: 'Unknown endpoint.' }),
@@ -363,6 +424,9 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
  * port when this module is the process entrypoint (local `npm run server`).
  */
 await initStore();
+// Start sweeping only after the store is ready, or the first sweep runs
+// against an empty in-memory list and reports nothing overdue.
+startSlaScheduler();
 await seedDemoData();
 
 const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
