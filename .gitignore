@@ -26,3 +26,4 @@ src/__eb_test.tsx
 .rlstest.mjs
 .rlsneg.mjs
 .dbcheck.mjs
+.pt/
