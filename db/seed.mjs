@@ -44,6 +44,16 @@ if (!process.env.DATABASE_URL) {
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry');
 const RESET = argv.includes('--reset');
+/**
+ * --drop rebuilds from nothing.
+ *
+ * Needed because CREATE TABLE IF NOT EXISTS is not a migration: if a table
+ * of the same name already exists with a DIFFERENT shape, it is skipped
+ * silently and every later statement that assumes the new columns fails.
+ * That is exactly how an older `complaints` table lacking `deleted_at`
+ * survived and broke the schema apply. TRUNCATE cannot fix a wrong shape.
+ */
+const DROP = argv.includes('--drop');
 
 // ───────────────────────── deterministic RNG ─────────────────────────
 let _s = 20260731;
@@ -362,87 +372,7 @@ async function seed(exec) {
   };
 }
 
-// ──────────────────── SQL statement splitter ────────────────────
-/**
- * Split a .sql file into individual statements.
- *
- * Required because `@neondatabase/serverless`'s `neon()` HTTP driver sends
- * every query as a PREPARED statement, and Postgres refuses to parse more
- * than one command in one of those:
- *
- *   NeonDbError: cannot insert multiple commands into a prepared statement
- *
- * PGlite's `exec()` accepts multi-statement SQL happily, which is exactly
- * why `--dry` passed while the real path was broken. Both branches now use
- * this splitter so the dry run actually exercises the shape of the real one.
- *
- * `split(';')` is not good enough: 001_schema.sql contains dollar-quoted
- * function bodies whose semicolons would shred the statements. This tracks
- * every context in which a `;` is NOT a terminator.
- */
-function splitStatements(text) {
-  const out = [];
-  let buf = '';
-  let i = 0;
-
-  while (i < text.length) {
-    const two = text.slice(i, i + 2);
-
-    if (two === '--') {                       // line comment
-      const nl = text.indexOf('\n', i);
-      const end = nl === -1 ? text.length : nl;
-      buf += text.slice(i, end);
-      i = end;
-      continue;
-    }
-    if (two === '/*') {                       // block comment (Postgres nests)
-      let depth = 1; let j = i + 2;
-      while (j < text.length && depth > 0) {
-        if (text.slice(j, j + 2) === '/*') { depth++; j += 2; }
-        else if (text.slice(j, j + 2) === '*/') { depth--; j += 2; }
-        else j++;
-      }
-      buf += text.slice(i, j);
-      i = j;
-      continue;
-    }
-    if (text[i] === "'" || text[i] === '"') { // quoted literal / identifier
-      const q = text[i];
-      let j = i + 1;
-      while (j < text.length) {
-        if (text[j] === q) {
-          if (text[j + 1] === q) { j += 2; continue; } // '' escape
-          j++; break;
-        }
-        if (q === "'" && text[j] === '\\') { j += 2; continue; }
-        j++;
-      }
-      buf += text.slice(i, j);
-      i = j;
-      continue;
-    }
-    const dollar = /^\$[A-Za-z_0-9]*\$/.exec(text.slice(i));
-    if (dollar) {                             // $$ ... $$ or $tag$ ... $tag$
-      const tag = dollar[0];
-      const close = text.indexOf(tag, i + tag.length);
-      const j = close === -1 ? text.length : close + tag.length;
-      buf += text.slice(i, j);
-      i = j;
-      continue;
-    }
-    if (text[i] === ';') {                    // top-level terminator
-      if (buf.trim()) out.push(buf.trim());
-      buf = '';
-      i++;
-      continue;
-    }
-    buf += text[i];
-    i++;
-  }
-
-  if (buf.trim()) out.push(buf.trim());
-  return out;
-}
+import { splitStatements } from './sql-split.mjs';
 
 /** Apply a .sql file one statement at a time. */
 async function applySqlFile(file, exec) {
@@ -490,6 +420,13 @@ if (DRY) {
   const { neon } = await import('@neondatabase/serverless');
   const sql = neon(process.env.DATABASE_URL);
   const exec = async s => { await sql.query(s); };
+  if (DROP) {
+    // public is the only schema this app owns, so recreating it is both the
+    // simplest and the most complete reset — views, enums, triggers included.
+    await exec('DROP SCHEMA public CASCADE');
+    await exec('CREATE SCHEMA public');
+    console.log('  dropped and recreated schema "public"');
+  }
   const n = await applySqlFile(path.join(DIR, '001_schema.sql'), exec);
   console.log(`  schema: ${n} statements applied`);
   const counts = await seed(exec);

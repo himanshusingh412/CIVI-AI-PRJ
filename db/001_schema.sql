@@ -437,3 +437,86 @@ CREATE TRIGGER trg_complaints_workload
 CREATE OR REPLACE VIEW v_active_complaints AS SELECT * FROM complaints WHERE deleted_at IS NULL;
 CREATE OR REPLACE VIEW v_active_users      AS SELECT * FROM users      WHERE deleted_at IS NULL;
 CREATE OR REPLACE VIEW v_active_officers   AS SELECT * FROM officers   WHERE deleted_at IS NULL;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- complaints_api — the shape the application layer reads.
+--
+-- The server used to own a second, denormalized `complaints` table with
+-- JSONB sub-documents. Two CREATE TABLE IF NOT EXISTS statements for the
+-- same name meant whichever ran first won and the other silently no-op'd,
+-- which is how a partial index on `deleted_at` ended up failing against a
+-- table that had no such column.
+--
+-- This view is the reconciliation: the normalized tables stay the single
+-- source of truth, and the flat row shape the app already expects is
+-- derived here rather than duplicated as a second physical table.
+-- ─────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE VIEW complaints_api AS
+SELECT
+  c.reference_no                                    AS id,
+  c.id                                              AS uuid,
+  c.created_at,
+  c.updated_at,
+  COALESCE(u.full_name, 'Anonymous')                AS citizen_name,
+  COALESCE(u.phone, '')                             AS citizen_phone,
+  u.email                                           AS citizen_email,
+  c.category,
+  c.description,
+  c.state,
+  c.district,
+  c.address                                         AS ward,
+  c.latitude                                        AS lat,
+  c.longitude                                       AS lng,
+  d.name                                            AS department,
+  c.assigned_officer_id::text                       AS assigned_officer_id,
+  o.officer_name                                    AS assigned_officer_name,
+  c.status::text                                    AS status,
+  c.priority::text                                  AS priority,
+  c.escalation_level,
+  -- sla_deadline is nullable in the base table; the app's mapper calls
+  -- new Date() on it unconditionally, so never hand it a NULL.
+  COALESCE(c.sla_deadline, c.created_at)            AS sla_deadline,
+  dup.reference_no                                  AS duplicate_of_id,
+  COALESCE(m.items, '[]'::jsonb)                    AS attachments,
+  COALESCE(h.items, '[]'::jsonb)                    AS timeline,
+  COALESCE(n.items, '[]'::jsonb)                    AS internal_notes,
+  COALESCE(p.items, '[]'::jsonb)                    AS public_updates,
+  f.rating                                          AS citizen_rating
+FROM complaints c
+LEFT JOIN users       u   ON u.id   = c.user_id
+LEFT JOIN departments d   ON d.id   = c.department_id
+LEFT JOIN officers    o   ON o.id   = c.assigned_officer_id
+LEFT JOIN complaints  dup ON dup.id = c.duplicate_of_id
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(jsonb_build_object(
+           'url', cm.file_url, 'name', cm.file_name,
+           'mime', cm.mime_type, 'size', cm.file_size) ORDER BY cm.uploaded_at) AS items
+  FROM complaint_media cm
+  WHERE cm.complaint_id = c.id AND cm.deleted_at IS NULL
+) m ON TRUE
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(jsonb_build_object(
+           'at', sh.created_at, 'status', sh.new_status::text,
+           'note', sh.public_note) ORDER BY sh.created_at) AS items
+  FROM complaint_status_history sh
+  WHERE sh.complaint_id = c.id AND sh.deleted_at IS NULL
+) h ON TRUE
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(jsonb_build_object(
+           'at', sh.created_at, 'authorId', COALESCE(sh.updated_by::text, ''),
+           'authorName', '', 'body', sh.internal_note) ORDER BY sh.created_at) AS items
+  FROM complaint_status_history sh
+  WHERE sh.complaint_id = c.id AND sh.deleted_at IS NULL AND sh.internal_note IS NOT NULL
+) n ON TRUE
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(jsonb_build_object(
+           'at', sh.created_at, 'body', sh.public_note) ORDER BY sh.created_at) AS items
+  FROM complaint_status_history sh
+  WHERE sh.complaint_id = c.id AND sh.deleted_at IS NULL AND sh.public_note IS NOT NULL
+) p ON TRUE
+LEFT JOIN LATERAL (
+  SELECT cf.rating FROM citizen_feedback cf
+  WHERE cf.complaint_id = c.id AND cf.deleted_at IS NULL
+  ORDER BY cf.created_at DESC LIMIT 1
+) f ON TRUE
+WHERE c.deleted_at IS NULL;

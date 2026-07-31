@@ -15,9 +15,17 @@
  * Injection safety: every value goes through the driver's parameterised
  * tagged-template. No string concatenation builds SQL anywhere in this file.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Complaint, ComplaintStore } from './store.js';
+import { splitStatements } from '../db/sql-split.mjs';
 
-type SqlClient = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<any[]>;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+type SqlClient = ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<any[]>) & {
+  query: (text: string, params?: unknown[]) => Promise<any>;
+};
 
 let sql: SqlClient | null = null;
 
@@ -44,47 +52,29 @@ export async function initPostgres(): Promise<boolean> {
     return false;
   }
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS complaints (
-      id                    TEXT PRIMARY KEY,
-      created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-      citizen_name          TEXT NOT NULL,
-      citizen_phone         TEXT NOT NULL,
-      citizen_email         TEXT,
-      category              TEXT NOT NULL,
-      description           TEXT NOT NULL,
-      state                 TEXT NOT NULL,
-      district              TEXT NOT NULL,
-      ward                  TEXT,
-      lat                   DOUBLE PRECISION,
-      lng                   DOUBLE PRECISION,
-      department            TEXT,
-      assigned_officer_id   TEXT,
-      assigned_officer_name TEXT,
-      status                TEXT NOT NULL,
-      priority              TEXT NOT NULL,
-      escalation_level      INTEGER NOT NULL DEFAULT 0,
-      sla_deadline          TIMESTAMPTZ NOT NULL,
-      duplicate_of_id       TEXT,
-      -- Sub-documents kept as JSONB: they are always read with the parent
-      -- row and never queried independently, so separate tables would add
-      -- joins for no benefit.
-      attachments           JSONB NOT NULL DEFAULT '[]'::jsonb,
-      timeline              JSONB NOT NULL DEFAULT '[]'::jsonb,
-      internal_notes        JSONB NOT NULL DEFAULT '[]'::jsonb,
-      public_updates        JSONB NOT NULL DEFAULT '[]'::jsonb,
-      citizen_rating        INTEGER
-    )`;
+  /**
+   * Apply the canonical schema from db/001_schema.sql.
+   *
+   * This file used to define its OWN `complaints` table inline — a
+   * denormalized TEXT-keyed design with JSONB sub-documents — while
+   * db/001_schema.sql defined a normalized UUID-keyed one across 14 tables.
+   * Two schema authorities for the same table name.
+   *
+   * Because both used CREATE TABLE IF NOT EXISTS, whichever ran first won
+   * silently and the other became a no-op. The server usually started first,
+   * so the seed then failed on `CREATE UNIQUE INDEX ... WHERE deleted_at IS
+   * NULL` against a table that had no deleted_at. The error looked like a
+   * broken migration; the real fault was two designs disagreeing.
+   *
+   * There is now exactly one source of truth, and it is the .sql file.
+   */
+  const schemaPath = path.join(__dirname, '..', 'db', '001_schema.sql');
+  const statements = splitStatements(fs.readFileSync(schemaPath, 'utf8'));
+  // One statement per round trip: the neon() HTTP driver sends each query as
+  // a prepared statement, and Postgres refuses multiple commands in one.
+  for (const stmt of statements) await sql.query(stmt);
 
-  // Indexes match the RBAC scope predicates — these are the columns every
-  // list query filters on.
-  await sql`CREATE INDEX IF NOT EXISTS idx_complaints_scope
-            ON complaints (state, district, department, assigned_officer_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_complaints_status ON complaints (status)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_complaints_created ON complaints (created_at DESC)`;
-
-  console.log('[store] Postgres connected; schema ready');
+  console.log(`[store] Postgres connected; canonical schema applied (${statements.length} statements)`);
   return true;
 }
 
@@ -120,61 +110,163 @@ const toComplaint = (r: any): Complaint => ({
 export const postgresStore: ComplaintStore = {
   async list() {
     if (!sql) throw new Error('postgres_not_initialised');
-    const rows = await sql`SELECT * FROM complaints ORDER BY created_at DESC LIMIT 500`;
+    // complaints_api, not complaints: the view flattens the normalized
+    // tables into the row shape toComplaint() expects. See db/001_schema.sql.
+    const rows = await sql`SELECT * FROM complaints_api ORDER BY created_at DESC LIMIT 500`;
     return rows.map(toComplaint);
   },
 
   async get(id: string) {
     if (!sql) throw new Error('postgres_not_initialised');
-    const rows = await sql`SELECT * FROM complaints WHERE id = ${id} LIMIT 1`;
+    const rows = await sql`SELECT * FROM complaints_api WHERE id = ${id} LIMIT 1`;
     return rows[0] ? toComplaint(rows[0]) : null;
   },
 
   async create(input: any) {
     if (!sql) throw new Error('postgres_not_initialised');
-    const now = new Date();
-    const ymd = now.toISOString().slice(0, 10).replace(/-/g, '');
-    // Per-day sequence derived in SQL so concurrent inserts can't collide.
-    const [{ n }] = await sql`
-      SELECT COUNT(*) + 1 AS n FROM complaints WHERE id LIKE ${'CIV-' + ymd + '-%'}`;
-    const id = `CIV-${ymd}-${String(n).padStart(4, '0')}`;
+    const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
+    /**
+     * Resolve the citizen to a users row.
+     *
+     * The app layer only knows a name/phone/email; the normalized schema
+     * wants a UUID foreign key. Matching on phone (which carries a partial
+     * unique index) keeps a repeat complainant as one person rather than
+     * accumulating a duplicate user per complaint.
+     */
+    let userId: string | null = null;
+    if (input.citizenPhone || input.citizenEmail) {
+      const found = await sql`
+        SELECT id FROM users
+        WHERE deleted_at IS NULL
+          AND ((${input.citizenPhone ?? null}::text IS NOT NULL AND phone = ${input.citizenPhone ?? null})
+            OR (${input.citizenEmail ?? null}::text IS NOT NULL AND lower(email) = lower(${input.citizenEmail ?? null})))
+        LIMIT 1`;
+      if (found[0]) userId = found[0].id;
+      else {
+        /**
+         * users.role_id is NOT NULL, so a new citizen cannot be created
+         * before the Citizen role exists. On a schema-only database (no
+         * seed) that role is absent, which would make the very first
+         * complaint submission fail. Create it on demand instead of
+         * assuming the seed has run.
+         */
+        const role = await sql`
+          SELECT id FROM roles WHERE role_name = 'Citizen' AND deleted_at IS NULL LIMIT 1`;
+        const roleId = role[0]?.id ?? (await sql`
+          INSERT INTO roles (role_name, permissions)
+          VALUES ('Citizen', '["complaint:create","complaint:read_own"]'::jsonb)
+          RETURNING id`)[0].id;
+
+        const made = await sql`
+          INSERT INTO users (full_name, phone, email, state, district, role_id)
+          VALUES (${input.citizenName ?? 'Anonymous'}, ${input.citizenPhone ?? null},
+                  ${input.citizenEmail ?? null}, ${input.state ?? null},
+                  ${input.district ?? null}, ${roleId})
+          RETURNING id`;
+        userId = made[0].id;
+      }
+    }
+
+    // Department arrives as a display name; the FK wants an id. An unknown
+    // name resolves to NULL rather than failing the insert — an unrouted
+    // complaint is recoverable, a rejected one is lost.
+    const dept = input.department
+      ? await sql`SELECT id FROM departments WHERE name = ${input.department} AND deleted_at IS NULL LIMIT 1`
+      : [];
+    const departmentId = dept[0]?.id ?? null;
+
+    // Officer ids from the demo constants are not UUIDs, so validate the
+    // shape before letting Postgres reject the whole statement.
+    const officerId =
+      typeof input.assignedOfficerId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.assignedOfficerId)
+        ? input.assignedOfficerId
+        : null;
+
+    const status = input.status ?? 'submitted';
+    // `title` is NOT NULL here but has no counterpart in the app model.
+    // Derive it from the description rather than inventing a column.
+    const title = String(input.description ?? '').trim().slice(0, 120) || input.category || 'Complaint';
+
+    /**
+     * reference_no is generated inside the INSERT so the count and the write
+     * happen in one statement. Doing it as two round trips lets two
+     * concurrent submissions read the same count and collide.
+     */
     const rows = await sql`
       INSERT INTO complaints (
-        id, citizen_name, citizen_phone, citizen_email, category, description,
-        state, district, ward, lat, lng, department,
-        assigned_officer_id, assigned_officer_name, status, priority, sla_deadline
+        reference_no, user_id, department_id, assigned_officer_id,
+        category, title, description, status, priority,
+        latitude, longitude, address, district, state, sla_deadline
       ) VALUES (
-        ${id}, ${input.citizenName}, ${input.citizenPhone}, ${input.citizenEmail ?? null},
-        ${input.category}, ${input.description}, ${input.state}, ${input.district},
-        ${input.ward ?? null}, ${input.lat ?? null}, ${input.lng ?? null},
-        ${input.department ?? null}, ${input.assignedOfficerId ?? null},
-        ${input.assignedOfficerName ?? null}, ${input.status ?? 'submitted'},
-        ${input.priority ?? 'Medium'}, ${input.slaDeadline ?? new Date(Date.now() + 48 * 3600_000).toISOString()}
-      ) RETURNING *`;
-    return toComplaint(rows[0]);
+        ${'CIV-' + ymd + '-'} || lpad((
+          SELECT COUNT(*) + 1 FROM complaints WHERE reference_no LIKE ${'CIV-' + ymd + '-%'}
+        )::text, 4, '0'),
+        ${userId}, ${departmentId}, ${officerId},
+        ${input.category}, ${title}, ${input.description},
+        ${status}::complaint_status, ${input.priority ?? 'Medium'}::priority_level,
+        ${input.lat ?? null}, ${input.lng ?? null}, ${input.ward ?? null},
+        ${input.district}, ${input.state},
+        ${input.slaDeadline ?? new Date(Date.now() + 48 * 3600_000).toISOString()}
+      ) RETURNING id, reference_no`;
+
+    // The opening timeline entry is a history row, not a JSONB blob — that
+    // is what makes the audit trail queryable instead of merely displayable.
+    await sql`
+      INSERT INTO complaint_status_history (complaint_id, new_status, public_note)
+      VALUES (${rows[0].id}, ${status}::complaint_status, 'Complaint received')`;
+
+    const created = await sql`SELECT * FROM complaints_api WHERE id = ${rows[0].reference_no} LIMIT 1`;
+    return toComplaint(created[0]);
   },
 
   async update(id: string, patch: Partial<Complaint>) {
     if (!sql) throw new Error('postgres_not_initialised');
-    // COALESCE keeps this a single statement while leaving unspecified
-    // columns untouched — avoids a read-modify-write race.
-    const rows = await sql`
+
+    // `id` is the human reference_no; every write below keys off the UUID.
+    const found = await sql`
+      SELECT id, status::text AS status FROM complaints
+      WHERE reference_no = ${id} AND deleted_at IS NULL LIMIT 1`;
+    if (!found[0]) return null;
+    const { id: uuid, status: previous } = found[0];
+
+    const dept = patch.department
+      ? await sql`SELECT id FROM departments WHERE name = ${patch.department} AND deleted_at IS NULL LIMIT 1`
+      : [];
+
+    await sql`
       UPDATE complaints SET
-        status                = COALESCE(${patch.status ?? null}, status),
-        priority              = COALESCE(${patch.priority ?? null}, priority),
-        department            = COALESCE(${patch.department ?? null}, department),
-        assigned_officer_id   = COALESCE(${patch.assignedOfficerId ?? null}, assigned_officer_id),
-        assigned_officer_name = COALESCE(${patch.assignedOfficerName ?? null}, assigned_officer_name),
-        escalation_level      = COALESCE(${patch.escalationLevel ?? null}, escalation_level),
-        citizen_rating        = COALESCE(${patch.citizenRating ?? null}, citizen_rating),
-        timeline              = COALESCE(${patch.timeline ? JSON.stringify(patch.timeline) : null}::jsonb, timeline),
-        internal_notes        = COALESCE(${patch.internalNotes ? JSON.stringify(patch.internalNotes) : null}::jsonb, internal_notes),
-        public_updates        = COALESCE(${patch.publicUpdates ? JSON.stringify(patch.publicUpdates) : null}::jsonb, public_updates),
-        attachments           = COALESCE(${patch.attachments ? JSON.stringify(patch.attachments) : null}::jsonb, attachments),
-        updated_at            = now()
-      WHERE id = ${id}
-      RETURNING *`;
+        status           = COALESCE(${patch.status ?? null}::complaint_status, status),
+        priority         = COALESCE(${patch.priority ?? null}::priority_level, priority),
+        department_id    = COALESCE(${dept[0]?.id ?? null}::uuid, department_id),
+        escalation_level = COALESCE(${patch.escalationLevel ?? null}::int, escalation_level),
+        -- The CHECK constraint refuses a closed complaint with no closed_date,
+        -- so stamp it here rather than letting the constraint reject the write.
+        closed_date      = CASE WHEN ${patch.status ?? null} = 'closed'
+                                THEN COALESCE(closed_date, now()) ELSE closed_date END,
+        updated_at       = now()
+      WHERE id = ${uuid}`;
+
+    // Append history only when something actually happened, so the audit
+    // trail does not fill with no-op rows on every save.
+    const note = patch.publicUpdates?.at(-1)?.body ?? null;
+    const internal = patch.internalNotes?.at(-1)?.body ?? null;
+    if ((patch.status && patch.status !== previous) || note || internal) {
+      await sql`
+        INSERT INTO complaint_status_history
+          (complaint_id, previous_status, new_status, public_note, internal_note)
+        VALUES (${uuid}, ${previous}::complaint_status,
+                ${patch.status ?? previous}::complaint_status, ${note}, ${internal})`;
+    }
+
+    if (typeof patch.citizenRating === 'number') {
+      await sql`
+        INSERT INTO citizen_feedback (complaint_id, rating)
+        VALUES (${uuid}, ${patch.citizenRating})`;
+    }
+
+    const rows = await sql`SELECT * FROM complaints_api WHERE id = ${id} LIMIT 1`;
     return rows[0] ? toComplaint(rows[0]) : null;
   },
 };
