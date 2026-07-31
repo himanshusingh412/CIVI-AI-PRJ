@@ -1,0 +1,297 @@
+import type { LangType } from './locales';
+
+/**
+ * Translation dictionary.
+ *
+ * English is the source of truth and the only complete locale; every other
+ * language is a Partial of it and falls back key-by-key. That means a
+ * half-translated language degrades to mixed English rather than blank or
+ * crashing, and adding a new English string never breaks the other eleven.
+ *
+ * Scope note: this covers the citizen-facing shell — navigation, the chat
+ * entry points, complaint status names and the sign-in screen. The admin
+ * portal is deliberately NOT translated: it is used by government staff who
+ * share a working language, and translating operational vocabulary badly is
+ * worse than leaving it in English.
+ */
+const en = {
+  'app.tagline': 'AI Grievance Portal',
+  'app.online': 'Online',
+
+  'nav.chat': 'Report',
+  'nav.dashboard': 'Dashboard',
+  'nav.track': 'Track',
+  'nav.feed': 'Community',
+  'nav.skipToMain': 'Skip to main content',
+
+  'action.quickReport': 'Quick report',
+  'action.emergency': 'Emergency',
+  'action.statusCheck': 'Check status',
+  'action.fileComplaint': 'File a complaint',
+  'action.send': 'Send',
+  'action.retry': 'Try again',
+
+  'cat.roads': 'Roads & Transport',
+  'cat.water': 'Water Supply',
+  'cat.electricity': 'Electricity',
+  'cat.sanitation': 'Sanitation',
+  'cat.law': 'Law & Order',
+
+  'status.submitted': 'Submitted',
+  'status.in_progress': 'In progress',
+  'status.resolved': 'Resolved',
+  'status.closed': 'Closed',
+  'status.rejected': 'Rejected',
+
+  'priority.Low': 'Low',
+  'priority.Medium': 'Medium',
+  'priority.High': 'High',
+  'priority.Critical': 'Critical',
+
+  'auth.welcome': 'Welcome to CivicAI',
+  'auth.howContinue': 'How would you like to continue?',
+  'auth.asCitizen': "I'm a citizen",
+  'auth.asCitizenSub': 'Report an issue and track your complaints',
+  'auth.asStaff': "I'm government staff",
+  'auth.asStaffSub': 'Triage, assign and resolve grievances',
+  'auth.signIn': 'Sign in to CivicAI',
+  'auth.emailLabel': 'Email address',
+  'auth.emailHint': "We'll email a 6-digit code. No password needed.",
+  'auth.emailCta': 'Email me a code',
+  'auth.or': 'OR',
+
+  'empty.noComplaints': 'No complaints found matching your criteria.',
+  'lang.label': 'Language',
+} as const;
+
+export type StringKey = keyof typeof en;
+
+type Partials = Partial<Record<StringKey, string>>;
+
+/**
+ * Translations are intentionally plain and short. Government-service copy
+ * should read as instructions, not marketing — in every language.
+ */
+export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
+  en,
+
+  hi: {
+    'app.tagline': 'एआई शिकायत पोर्टल', 'app.online': 'ऑनलाइन',
+    'nav.chat': 'शिकायत करें', 'nav.dashboard': 'डैशबोर्ड', 'nav.track': 'स्थिति देखें', 'nav.feed': 'समुदाय',
+    'nav.skipToMain': 'मुख्य सामग्री पर जाएँ',
+    'action.quickReport': 'त्वरित शिकायत', 'action.emergency': 'आपातकाल', 'action.statusCheck': 'स्थिति जाँचें',
+    'action.fileComplaint': 'शिकायत दर्ज करें', 'action.send': 'भेजें', 'action.retry': 'पुनः प्रयास करें',
+    'cat.roads': 'सड़क और परिवहन', 'cat.water': 'जल आपूर्ति', 'cat.electricity': 'बिजली',
+    'cat.sanitation': 'स्वच्छता', 'cat.law': 'कानून व्यवस्था',
+    'status.submitted': 'दर्ज', 'status.in_progress': 'प्रगति पर', 'status.resolved': 'हल हुआ',
+    'status.closed': 'बंद', 'status.rejected': 'अस्वीकृत',
+    'priority.Low': 'कम', 'priority.Medium': 'मध्यम', 'priority.High': 'उच्च', 'priority.Critical': 'अति गंभीर',
+    'auth.welcome': 'सिविकAI में आपका स्वागत है', 'auth.howContinue': 'आप कैसे आगे बढ़ना चाहेंगे?',
+    'auth.asCitizen': 'मैं नागरिक हूँ', 'auth.asCitizenSub': 'शिकायत दर्ज करें और स्थिति देखें',
+    'auth.asStaff': 'मैं सरकारी कर्मचारी हूँ', 'auth.asStaffSub': 'शिकायतों का निपटान और आवंटन',
+    'auth.signIn': 'साइन इन करें', 'auth.emailLabel': 'ईमेल पता',
+    'auth.emailHint': 'हम 6 अंकों का कोड भेजेंगे। पासवर्ड की आवश्यकता नहीं।',
+    'auth.emailCta': 'मुझे कोड भेजें', 'auth.or': 'या',
+    'empty.noComplaints': 'आपके मापदंडों से मेल खाती कोई शिकायत नहीं मिली।', 'lang.label': 'भाषा',
+  },
+
+  bn: {
+    'app.tagline': 'এআই অভিযোগ পোর্টাল', 'app.online': 'অনলাইন',
+    'nav.chat': 'অভিযোগ করুন', 'nav.dashboard': 'ড্যাশবোর্ড', 'nav.track': 'অবস্থা দেখুন', 'nav.feed': 'সম্প্রদায়',
+    'nav.skipToMain': 'মূল বিষয়বস্তুতে যান',
+    'action.quickReport': 'দ্রুত অভিযোগ', 'action.emergency': 'জরুরি', 'action.statusCheck': 'অবস্থা দেখুন',
+    'action.fileComplaint': 'অভিযোগ দাখিল করুন', 'action.send': 'পাঠান', 'action.retry': 'আবার চেষ্টা করুন',
+    'cat.roads': 'রাস্তা ও পরিবহন', 'cat.water': 'জল সরবরাহ', 'cat.electricity': 'বিদ্যুৎ',
+    'cat.sanitation': 'পরিচ্ছন্নতা', 'cat.law': 'আইনশৃঙ্খলা',
+    'status.submitted': 'দাখিল', 'status.in_progress': 'চলমান', 'status.resolved': 'সমাধান হয়েছে',
+    'status.closed': 'বন্ধ', 'status.rejected': 'প্রত্যাখ্যাত',
+    'priority.Low': 'কম', 'priority.Medium': 'মাঝারি', 'priority.High': 'উচ্চ', 'priority.Critical': 'অতি জরুরি',
+    'auth.welcome': 'CivicAI-তে স্বাগতম', 'auth.howContinue': 'আপনি কীভাবে এগোতে চান?',
+    'auth.asCitizen': 'আমি একজন নাগরিক', 'auth.asCitizenSub': 'অভিযোগ জানান ও অবস্থা দেখুন',
+    'auth.asStaff': 'আমি সরকারি কর্মী', 'auth.asStaffSub': 'অভিযোগ বণ্টন ও নিষ্পত্তি',
+    'auth.signIn': 'সাইন ইন করুন', 'auth.emailLabel': 'ইমেল ঠিকানা',
+    'auth.emailHint': 'আমরা ৬ সংখ্যার কোড পাঠাব। পাসওয়ার্ড লাগবে না।',
+    'auth.emailCta': 'কোড পাঠান', 'auth.or': 'অথবা',
+    'empty.noComplaints': 'আপনার শর্তে মিলে এমন কোনও অভিযোগ নেই।', 'lang.label': 'ভাষা',
+  },
+
+  mr: {
+    'app.tagline': 'एआय तक्रार पोर्टल', 'app.online': 'ऑनलाइन',
+    'nav.chat': 'तक्रार करा', 'nav.dashboard': 'डॅशबोर्ड', 'nav.track': 'स्थिती पहा', 'nav.feed': 'समुदाय',
+    'nav.skipToMain': 'मुख्य मजकुरावर जा',
+    'action.quickReport': 'त्वरित तक्रार', 'action.emergency': 'आणीबाणी', 'action.statusCheck': 'स्थिती तपासा',
+    'action.fileComplaint': 'तक्रार नोंदवा', 'action.send': 'पाठवा', 'action.retry': 'पुन्हा प्रयत्न करा',
+    'cat.roads': 'रस्ते व वाहतूक', 'cat.water': 'पाणीपुरवठा', 'cat.electricity': 'वीज',
+    'cat.sanitation': 'स्वच्छता', 'cat.law': 'कायदा व सुव्यवस्था',
+    'status.submitted': 'नोंदवली', 'status.in_progress': 'प्रगतीपथावर', 'status.resolved': 'सोडवली',
+    'status.closed': 'बंद', 'status.rejected': 'नाकारली',
+    'priority.Low': 'कमी', 'priority.Medium': 'मध्यम', 'priority.High': 'उच्च', 'priority.Critical': 'अति गंभीर',
+    'auth.welcome': 'CivicAI मध्ये स्वागत आहे', 'auth.howContinue': 'तुम्ही कसे पुढे जाऊ इच्छिता?',
+    'auth.asCitizen': 'मी नागरिक आहे', 'auth.asCitizenSub': 'तक्रार नोंदवा आणि स्थिती पहा',
+    'auth.asStaff': 'मी सरकारी कर्मचारी आहे', 'auth.asStaffSub': 'तक्रारींचे वाटप व निपटारा',
+    'auth.signIn': 'साइन इन करा', 'auth.emailLabel': 'ईमेल पत्ता',
+    'auth.emailHint': 'आम्ही ६ अंकी कोड पाठवू. पासवर्ड नको.',
+    'auth.emailCta': 'मला कोड पाठवा', 'auth.or': 'किंवा',
+    'empty.noComplaints': 'तुमच्या निकषांशी जुळणाऱ्या तक्रारी नाहीत.', 'lang.label': 'भाषा',
+  },
+
+  te: {
+    'app.tagline': 'AI ఫిర్యాదు పోర్టల్', 'app.online': 'ఆన్‌లైన్',
+    'nav.chat': 'ఫిర్యాదు చేయండి', 'nav.dashboard': 'డాష్‌బోర్డ్', 'nav.track': 'స్థితి చూడండి', 'nav.feed': 'సమాజం',
+    'nav.skipToMain': 'ప్రధాన విషయానికి వెళ్లండి',
+    'action.quickReport': 'త్వరిత ఫిర్యాదు', 'action.emergency': 'అత్యవసరం', 'action.statusCheck': 'స్థితి తనిఖీ',
+    'action.fileComplaint': 'ఫిర్యాదు నమోదు', 'action.send': 'పంపండి', 'action.retry': 'మళ్లీ ప్రయత్నించండి',
+    'cat.roads': 'రోడ్లు & రవాణా', 'cat.water': 'నీటి సరఫరా', 'cat.electricity': 'విద్యుత్',
+    'cat.sanitation': 'పారిశుద్ధ్యం', 'cat.law': 'శాంతిభద్రతలు',
+    'status.submitted': 'నమోదైంది', 'status.in_progress': 'పురోగతిలో', 'status.resolved': 'పరిష్కరించబడింది',
+    'status.closed': 'మూసివేయబడింది', 'status.rejected': 'తిరస్కరించబడింది',
+    'priority.Low': 'తక్కువ', 'priority.Medium': 'మధ్యస్థం', 'priority.High': 'అధికం', 'priority.Critical': 'అత్యంత తీవ్రం',
+    'auth.welcome': 'CivicAIకి స్వాగతం', 'auth.howContinue': 'మీరు ఎలా కొనసాగాలనుకుంటున్నారు?',
+    'auth.asCitizen': 'నేను పౌరుడిని', 'auth.asCitizenSub': 'ఫిర్యాదు చేసి స్థితిని చూడండి',
+    'auth.asStaff': 'నేను ప్రభుత్వ ఉద్యోగిని', 'auth.asStaffSub': 'ఫిర్యాదుల కేటాయింపు, పరిష్కారం',
+    'auth.signIn': 'సైన్ ఇన్ చేయండి', 'auth.emailLabel': 'ఇమెయిల్ చిరునామా',
+    'auth.emailHint': '6 అంకెల కోడ్ పంపుతాము. పాస్‌వర్డ్ అవసరం లేదు.',
+    'auth.emailCta': 'కోడ్ పంపండి', 'auth.or': 'లేదా',
+    'empty.noComplaints': 'మీ ప్రమాణాలకు సరిపోయే ఫిర్యాదులు లేవు.', 'lang.label': 'భాష',
+  },
+
+  ta: {
+    'app.tagline': 'AI புகார் தளம்', 'app.online': 'இணைப்பில்',
+    'nav.chat': 'புகார் அளிக்க', 'nav.dashboard': 'கட்டுப்பாட்டகம்', 'nav.track': 'நிலை அறிய', 'nav.feed': 'சமூகம்',
+    'nav.skipToMain': 'முதன்மை உள்ளடக்கத்திற்கு செல்',
+    'action.quickReport': 'விரைவு புகார்', 'action.emergency': 'அவசரம்', 'action.statusCheck': 'நிலை சரிபார்',
+    'action.fileComplaint': 'புகார் பதிவு', 'action.send': 'அனுப்பு', 'action.retry': 'மீண்டும் முயற்சி',
+    'cat.roads': 'சாலை & போக்குவரத்து', 'cat.water': 'குடிநீர்', 'cat.electricity': 'மின்சாரம்',
+    'cat.sanitation': 'தூய்மை', 'cat.law': 'சட்டம் ஒழுங்கு',
+    'status.submitted': 'பதிவானது', 'status.in_progress': 'நடைபெறுகிறது', 'status.resolved': 'தீர்க்கப்பட்டது',
+    'status.closed': 'மூடப்பட்டது', 'status.rejected': 'நிராகரிக்கப்பட்டது',
+    'priority.Low': 'குறைவு', 'priority.Medium': 'நடுத்தரம்', 'priority.High': 'அதிகம்', 'priority.Critical': 'மிக அவசரம்',
+    'auth.welcome': 'CivicAI வரவேற்கிறது', 'auth.howContinue': 'எப்படி தொடர விரும்புகிறீர்கள்?',
+    'auth.asCitizen': 'நான் ஒரு குடிமகன்', 'auth.asCitizenSub': 'புகார் அளித்து நிலையை அறியுங்கள்',
+    'auth.asStaff': 'நான் அரசு ஊழியர்', 'auth.asStaffSub': 'புகார்களை ஒதுக்கி தீர்க்க',
+    'auth.signIn': 'உள்நுழைக', 'auth.emailLabel': 'மின்னஞ்சல் முகவரி',
+    'auth.emailHint': '6 இலக்க குறியீடு அனுப்புவோம். கடவுச்சொல் தேவையில்லை.',
+    'auth.emailCta': 'குறியீடு அனுப்பு', 'auth.or': 'அல்லது',
+    'empty.noComplaints': 'உங்கள் நிபந்தனைக்கு ஏற்ற புகார்கள் இல்லை.', 'lang.label': 'மொழி',
+  },
+
+  gu: {
+    'app.tagline': 'AI ફરિયાદ પોર્ટલ', 'app.online': 'ઓનલાઇન',
+    'nav.chat': 'ફરિયાદ કરો', 'nav.dashboard': 'ડેશબોર્ડ', 'nav.track': 'સ્થિતિ જુઓ', 'nav.feed': 'સમુદાય',
+    'nav.skipToMain': 'મુખ્ય સામગ્રી પર જાઓ',
+    'action.quickReport': 'ઝડપી ફરિયાદ', 'action.emergency': 'કટોકટી', 'action.statusCheck': 'સ્થિતિ તપાસો',
+    'action.fileComplaint': 'ફરિયાદ નોંધાવો', 'action.send': 'મોકલો', 'action.retry': 'ફરી પ્રયાસ કરો',
+    'cat.roads': 'રસ્તા અને પરિવહન', 'cat.water': 'પાણી પુરવઠો', 'cat.electricity': 'વીજળી',
+    'cat.sanitation': 'સ્વચ્છતા', 'cat.law': 'કાયદો અને વ્યવસ્થા',
+    'status.submitted': 'નોંધાયેલ', 'status.in_progress': 'પ્રગતિમાં', 'status.resolved': 'ઉકેલાયેલ',
+    'status.closed': 'બંધ', 'status.rejected': 'નકારેલ',
+    'priority.Low': 'ઓછું', 'priority.Medium': 'મધ્યમ', 'priority.High': 'ઊંચું', 'priority.Critical': 'અતિ ગંભીર',
+    'auth.welcome': 'CivicAI માં આપનું સ્વાગત છે', 'auth.howContinue': 'તમે કેવી રીતે આગળ વધવા માંગો છો?',
+    'auth.asCitizen': 'હું નાગરિક છું', 'auth.asCitizenSub': 'ફરિયાદ નોંધાવો અને સ્થિતિ જુઓ',
+    'auth.asStaff': 'હું સરકારી કર્મચારી છું', 'auth.asStaffSub': 'ફરિયાદોની ફાળવણી અને નિકાલ',
+    'auth.signIn': 'સાઇન ઇન કરો', 'auth.emailLabel': 'ઈમેલ સરનામું',
+    'auth.emailHint': 'અમે 6 અંકનો કોડ મોકલીશું. પાસવર્ડ જરૂરી નથી.',
+    'auth.emailCta': 'મને કોડ મોકલો', 'auth.or': 'અથવા',
+    'empty.noComplaints': 'તમારા માપદંડ સાથે મેળ ખાતી ફરિયાદ મળી નથી.', 'lang.label': 'ભાષા',
+  },
+
+  kn: {
+    'app.tagline': 'AI ದೂರು ಪೋರ್ಟಲ್', 'app.online': 'ಆನ್‌ಲೈನ್',
+    'nav.chat': 'ದೂರು ನೀಡಿ', 'nav.dashboard': 'ಡ್ಯಾಶ್‌ಬೋರ್ಡ್', 'nav.track': 'ಸ್ಥಿತಿ ನೋಡಿ', 'nav.feed': 'ಸಮುದಾಯ',
+    'nav.skipToMain': 'ಮುಖ್ಯ ವಿಷಯಕ್ಕೆ ಹೋಗಿ',
+    'action.quickReport': 'ತ್ವರಿತ ದೂರು', 'action.emergency': 'ತುರ್ತು', 'action.statusCheck': 'ಸ್ಥಿತಿ ಪರಿಶೀಲಿಸಿ',
+    'action.fileComplaint': 'ದೂರು ದಾಖಲಿಸಿ', 'action.send': 'ಕಳುಹಿಸಿ', 'action.retry': 'ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ',
+    'cat.roads': 'ರಸ್ತೆ ಮತ್ತು ಸಾರಿಗೆ', 'cat.water': 'ನೀರು ಪೂರೈಕೆ', 'cat.electricity': 'ವಿದ್ಯುತ್',
+    'cat.sanitation': 'ಸ್ವಚ್ಛತೆ', 'cat.law': 'ಕಾನೂನು ಸುವ್ಯವಸ್ಥೆ',
+    'status.submitted': 'ದಾಖಲಾಗಿದೆ', 'status.in_progress': 'ಪ್ರಗತಿಯಲ್ಲಿದೆ', 'status.resolved': 'ಪರಿಹರಿಸಲಾಗಿದೆ',
+    'status.closed': 'ಮುಚ್ಚಲಾಗಿದೆ', 'status.rejected': 'ತಿರಸ್ಕರಿಸಲಾಗಿದೆ',
+    'priority.Low': 'ಕಡಿಮೆ', 'priority.Medium': 'ಮಧ್ಯಮ', 'priority.High': 'ಹೆಚ್ಚು', 'priority.Critical': 'ಅತಿ ಗಂಭೀರ',
+    'auth.welcome': 'CivicAI ಗೆ ಸ್ವಾಗತ', 'auth.howContinue': 'ನೀವು ಹೇಗೆ ಮುಂದುವರಿಯಲು ಬಯಸುತ್ತೀರಿ?',
+    'auth.asCitizen': 'ನಾನು ನಾಗರಿಕ', 'auth.asCitizenSub': 'ದೂರು ನೀಡಿ ಮತ್ತು ಸ್ಥಿತಿ ನೋಡಿ',
+    'auth.asStaff': 'ನಾನು ಸರ್ಕಾರಿ ಸಿಬ್ಬಂದಿ', 'auth.asStaffSub': 'ದೂರುಗಳ ಹಂಚಿಕೆ ಮತ್ತು ಪರಿಹಾರ',
+    'auth.signIn': 'ಸೈನ್ ಇನ್ ಮಾಡಿ', 'auth.emailLabel': 'ಇಮೇಲ್ ವಿಳಾಸ',
+    'auth.emailHint': '6 ಅಂಕಿಯ ಕೋಡ್ ಕಳುಹಿಸುತ್ತೇವೆ. ಪಾಸ್‌ವರ್ಡ್ ಬೇಡ.',
+    'auth.emailCta': 'ಕೋಡ್ ಕಳುಹಿಸಿ', 'auth.or': 'ಅಥವಾ',
+    'empty.noComplaints': 'ನಿಮ್ಮ ಮಾನದಂಡಕ್ಕೆ ಹೊಂದುವ ದೂರುಗಳಿಲ್ಲ.', 'lang.label': 'ಭಾಷೆ',
+  },
+
+  ml: {
+    'app.tagline': 'AI പരാതി പോർട്ടൽ', 'app.online': 'ഓൺലൈൻ',
+    'nav.chat': 'പരാതി നൽകുക', 'nav.dashboard': 'ഡാഷ്ബോർഡ്', 'nav.track': 'സ്ഥിതി അറിയുക', 'nav.feed': 'സമൂഹം',
+    'nav.skipToMain': 'പ്രധാന ഉള്ളടക്കത്തിലേക്ക്',
+    'action.quickReport': 'പെട്ടെന്നുള്ള പരാതി', 'action.emergency': 'അടിയന്തരം', 'action.statusCheck': 'സ്ഥിതി പരിശോധിക്കുക',
+    'action.fileComplaint': 'പരാതി രജിസ്റ്റർ ചെയ്യുക', 'action.send': 'അയയ്ക്കുക', 'action.retry': 'വീണ്ടും ശ്രമിക്കുക',
+    'cat.roads': 'റോഡും ഗതാഗതവും', 'cat.water': 'ജലവിതരണം', 'cat.electricity': 'വൈദ്യുതി',
+    'cat.sanitation': 'ശുചിത്വം', 'cat.law': 'ക്രമസമാധാനം',
+    'status.submitted': 'സമർപ്പിച്ചു', 'status.in_progress': 'നടക്കുന്നു', 'status.resolved': 'പരിഹരിച്ചു',
+    'status.closed': 'അടച്ചു', 'status.rejected': 'നിരസിച്ചു',
+    'priority.Low': 'കുറവ്', 'priority.Medium': 'ഇടത്തരം', 'priority.High': 'ഉയർന്നത്', 'priority.Critical': 'അതീവ ഗുരുതരം',
+    'auth.welcome': 'CivicAI-ലേക്ക് സ്വാഗതം', 'auth.howContinue': 'എങ്ങനെ തുടരാൻ ആഗ്രഹിക്കുന്നു?',
+    'auth.asCitizen': 'ഞാൻ ഒരു പൗരനാണ്', 'auth.asCitizenSub': 'പരാതി നൽകി സ്ഥിതി അറിയുക',
+    'auth.asStaff': 'ഞാൻ സർക്കാർ ജീവനക്കാരനാണ്', 'auth.asStaffSub': 'പരാതികൾ വിതരണം ചെയ്ത് പരിഹരിക്കുക',
+    'auth.signIn': 'സൈൻ ഇൻ ചെയ്യുക', 'auth.emailLabel': 'ഇമെയിൽ വിലാസം',
+    'auth.emailHint': '6 അക്ക കോഡ് അയയ്ക്കും. പാസ്‌വേഡ് വേണ്ട.',
+    'auth.emailCta': 'കോഡ് അയയ്ക്കുക', 'auth.or': 'അല്ലെങ്കിൽ',
+    'empty.noComplaints': 'നിങ്ങളുടെ മാനദണ്ഡത്തിന് അനുയോജ്യമായ പരാതികളില്ല.', 'lang.label': 'ഭാഷ',
+  },
+
+  pa: {
+    'app.tagline': 'AI ਸ਼ਿਕਾਇਤ ਪੋਰਟਲ', 'app.online': 'ਆਨਲਾਈਨ',
+    'nav.chat': 'ਸ਼ਿਕਾਇਤ ਕਰੋ', 'nav.dashboard': 'ਡੈਸ਼ਬੋਰਡ', 'nav.track': 'ਸਥਿਤੀ ਵੇਖੋ', 'nav.feed': 'ਭਾਈਚਾਰਾ',
+    'nav.skipToMain': 'ਮੁੱਖ ਸਮੱਗਰੀ ਤੇ ਜਾਓ',
+    'action.quickReport': 'ਤੁਰੰਤ ਸ਼ਿਕਾਇਤ', 'action.emergency': 'ਐਮਰਜੈਂਸੀ', 'action.statusCheck': 'ਸਥਿਤੀ ਜਾਂਚੋ',
+    'action.fileComplaint': 'ਸ਼ਿਕਾਇਤ ਦਰਜ ਕਰੋ', 'action.send': 'ਭੇਜੋ', 'action.retry': 'ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ',
+    'cat.roads': 'ਸੜਕਾਂ ਅਤੇ ਆਵਾਜਾਈ', 'cat.water': 'ਪਾਣੀ ਸਪਲਾਈ', 'cat.electricity': 'ਬਿਜਲੀ',
+    'cat.sanitation': 'ਸਫਾਈ', 'cat.law': 'ਕਾਨੂੰਨ ਵਿਵਸਥਾ',
+    'status.submitted': 'ਦਰਜ', 'status.in_progress': 'ਜਾਰੀ', 'status.resolved': 'ਹੱਲ ਹੋਇਆ',
+    'status.closed': 'ਬੰਦ', 'status.rejected': 'ਰੱਦ',
+    'priority.Low': 'ਘੱਟ', 'priority.Medium': 'ਦਰਮਿਆਨਾ', 'priority.High': 'ਵੱਧ', 'priority.Critical': 'ਅਤਿ ਗੰਭੀਰ',
+    'auth.welcome': 'CivicAI ਵਿੱਚ ਜੀ ਆਇਆਂ ਨੂੰ', 'auth.howContinue': 'ਤੁਸੀਂ ਕਿਵੇਂ ਅੱਗੇ ਵਧਣਾ ਚਾਹੁੰਦੇ ਹੋ?',
+    'auth.asCitizen': 'ਮੈਂ ਨਾਗਰਿਕ ਹਾਂ', 'auth.asCitizenSub': 'ਸ਼ਿਕਾਇਤ ਦਰਜ ਕਰੋ ਅਤੇ ਸਥਿਤੀ ਵੇਖੋ',
+    'auth.asStaff': 'ਮੈਂ ਸਰਕਾਰੀ ਕਰਮਚਾਰੀ ਹਾਂ', 'auth.asStaffSub': 'ਸ਼ਿਕਾਇਤਾਂ ਦੀ ਵੰਡ ਅਤੇ ਨਿਪਟਾਰਾ',
+    'auth.signIn': 'ਸਾਈਨ ਇਨ ਕਰੋ', 'auth.emailLabel': 'ਈਮੇਲ ਪਤਾ',
+    'auth.emailHint': 'ਅਸੀਂ 6 ਅੰਕਾਂ ਦਾ ਕੋਡ ਭੇਜਾਂਗੇ। ਪਾਸਵਰਡ ਦੀ ਲੋੜ ਨਹੀਂ।',
+    'auth.emailCta': 'ਮੈਨੂੰ ਕੋਡ ਭੇਜੋ', 'auth.or': 'ਜਾਂ',
+    'empty.noComplaints': 'ਤੁਹਾਡੇ ਮਾਪਦੰਡ ਨਾਲ ਮੇਲ ਖਾਂਦੀ ਕੋਈ ਸ਼ਿਕਾਇਤ ਨਹੀਂ।', 'lang.label': 'ਭਾਸ਼ਾ',
+  },
+
+  or: {
+    'app.tagline': 'AI ଅଭିଯୋଗ ପୋର୍ଟାଲ', 'app.online': 'ଅନଲାଇନ',
+    'nav.chat': 'ଅଭିଯୋଗ କରନ୍ତୁ', 'nav.dashboard': 'ଡ୍ୟାସବୋର୍ଡ', 'nav.track': 'ସ୍ଥିତି ଦେଖନ୍ତୁ', 'nav.feed': 'ସମ୍ପ୍ରଦାୟ',
+    'nav.skipToMain': 'ମୁଖ୍ୟ ବିଷୟକୁ ଯାଆନ୍ତୁ',
+    'action.quickReport': 'ଶୀଘ୍ର ଅଭିଯୋଗ', 'action.emergency': 'ଜରୁରୀ', 'action.statusCheck': 'ସ୍ଥିତି ଯାଞ୍ଚ',
+    'action.fileComplaint': 'ଅଭିଯୋଗ ଦାଖଲ', 'action.send': 'ପଠାନ୍ତୁ', 'action.retry': 'ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ',
+    'cat.roads': 'ରାସ୍ତା ଓ ପରିବହନ', 'cat.water': 'ଜଳ ଯୋଗାଣ', 'cat.electricity': 'ବିଦ୍ୟୁତ',
+    'cat.sanitation': 'ପରିଚ୍ଛନ୍ନତା', 'cat.law': 'ଆଇନ ଶୃଙ୍ଖଳା',
+    'status.submitted': 'ଦାଖଲ', 'status.in_progress': 'ଚାଲିଛି', 'status.resolved': 'ସମାଧାନ ହୋଇଛି',
+    'status.closed': 'ବନ୍ଦ', 'status.rejected': 'ପ୍ରତ୍ୟାଖ୍ୟାନ',
+    'priority.Low': 'କମ', 'priority.Medium': 'ମଧ୍ୟମ', 'priority.High': 'ଅଧିକ', 'priority.Critical': 'ଅତି ଗମ୍ଭୀର',
+    'auth.welcome': 'CivicAI କୁ ସ୍ୱାଗତ', 'auth.howContinue': 'ଆପଣ କିପରି ଆଗେଇବାକୁ ଚାହାଁନ୍ତି?',
+    'auth.asCitizen': 'ମୁଁ ଜଣେ ନାଗରିକ', 'auth.asCitizenSub': 'ଅଭିଯୋଗ ଦାଖଲ କରି ସ୍ଥିତି ଦେଖନ୍ତୁ',
+    'auth.asStaff': 'ମୁଁ ସରକାରୀ କର୍ମଚାରୀ', 'auth.asStaffSub': 'ଅଭିଯୋଗ ବଣ୍ଟନ ଓ ସମାଧାନ',
+    'auth.signIn': 'ସାଇନ ଇନ କରନ୍ତୁ', 'auth.emailLabel': 'ଇମେଲ ଠିକଣା',
+    'auth.emailHint': 'ଆମେ 6 ଅଙ୍କର କୋଡ ପଠାଇବୁ। ପାସୱାର୍ଡ ଆବଶ୍ୟକ ନାହିଁ।',
+    'auth.emailCta': 'କୋଡ ପଠାନ୍ତୁ', 'auth.or': 'କିମ୍ବା',
+    'empty.noComplaints': 'ଆପଣଙ୍କ ମାନଦଣ୍ଡ ସହ ମେଳ ଖାଉଥିବା ଅଭିଯୋଗ ନାହିଁ।', 'lang.label': 'ଭାଷା',
+  },
+
+  ur: {
+    'app.tagline': 'اے آئی شکایت پورٹل', 'app.online': 'آن لائن',
+    'nav.chat': 'شکایت درج کریں', 'nav.dashboard': 'ڈیش بورڈ', 'nav.track': 'حالت دیکھیں', 'nav.feed': 'کمیونٹی',
+    'nav.skipToMain': 'مرکزی مواد پر جائیں',
+    'action.quickReport': 'فوری شکایت', 'action.emergency': 'ہنگامی', 'action.statusCheck': 'حالت جانچیں',
+    'action.fileComplaint': 'شکایت درج کریں', 'action.send': 'بھیجیں', 'action.retry': 'دوبارہ کوشش کریں',
+    'cat.roads': 'سڑکیں اور نقل و حمل', 'cat.water': 'پانی کی فراہمی', 'cat.electricity': 'بجلی',
+    'cat.sanitation': 'صفائی', 'cat.law': 'امن و امان',
+    'status.submitted': 'درج', 'status.in_progress': 'جاری', 'status.resolved': 'حل شدہ',
+    'status.closed': 'بند', 'status.rejected': 'مسترد',
+    'priority.Low': 'کم', 'priority.Medium': 'درمیانہ', 'priority.High': 'زیادہ', 'priority.Critical': 'انتہائی سنگین',
+    'auth.welcome': 'CivicAI میں خوش آمدید', 'auth.howContinue': 'آپ کیسے آگے بڑھنا چاہیں گے؟',
+    'auth.asCitizen': 'میں ایک شہری ہوں', 'auth.asCitizenSub': 'شکایت درج کریں اور حالت دیکھیں',
+    'auth.asStaff': 'میں سرکاری ملازم ہوں', 'auth.asStaffSub': 'شکایات کی تقسیم اور حل',
+    'auth.signIn': 'سائن ان کریں', 'auth.emailLabel': 'ای میل پتہ',
+    'auth.emailHint': 'ہم 6 ہندسوں کا کوڈ بھیجیں گے۔ پاس ورڈ کی ضرورت نہیں۔',
+    'auth.emailCta': 'مجھے کوڈ بھیجیں', 'auth.or': 'یا',
+    'empty.noComplaints': 'آپ کے معیار سے مطابقت رکھنے والی کوئی شکایت نہیں ملی۔', 'lang.label': 'زبان',
+  },
+};

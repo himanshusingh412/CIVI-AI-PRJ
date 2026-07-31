@@ -48,7 +48,9 @@ import {
 } from 'recharts';
 import { MapContainer, TileLayer, Popup, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Complaint, ViewType, LangType, ChatMessage, SystemNotification } from './types';
+import { Complaint, ViewType, ChatMessage, SystemNotification } from './types';
+import { useI18n } from './i18n/I18nContext';
+import { LanguagePicker } from './components/LanguagePicker';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import { LoginScreen } from './components/LoginScreen';
@@ -137,7 +139,9 @@ const calculateSLADeadline = (category: string, startTime: number): number => {
 
 export default function App() {
   const [view, setView] = useState<ViewType>('chat');
-  const [lang, setLang] = useState<LangType>('en');
+  // Language now lives in I18nProvider so the picker, <html lang/dir> and
+  // every component agree. `t` falls back to English per key.
+  const { lang, t } = useI18n();
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -657,7 +661,9 @@ export default function App() {
     try {
       const recognition = new SpeechRecognition();
       recognitionRef.current = recognition;
-      recognition.lang = lang === 'en' ? 'en-US' : 'hi-IN';
+      // Hand the browser the actual locale; it degrades to its default if
+      // the language pack is missing, which is better than forcing Hindi.
+      recognition.lang = lang === 'en' ? 'en-US' : `${lang}-IN`;
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
 
@@ -795,22 +801,9 @@ export default function App() {
 
         <div className="flex items-center gap-3 sm:gap-6">
           <div
-            className="hidden sm:flex surface-2 rounded-xl p-1 bordered"
-            role="group"
-            aria-label="Language"
+            className="hidden sm:flex"
           >
-            {(['en', 'hi'] as const).map(code => (
-              <button
-                key={code}
-                onClick={() => setLang(code)}
-                aria-pressed={lang === code}
-                className={`px-3 py-1 rounded-lg text-[12px] font-bold uppercase transition-colors ${
-                  lang === code ? 'bg-cta text-white shadow-sm' : 'text-content-3 hover:text-content'
-                }`}
-              >
-                {code}
-              </button>
-            ))}
+            <LanguagePicker />
           </div>
 
           <div className="hidden sm:block h-6 w-px" style={{ background: 'var(--color-border)' }} />
@@ -943,26 +936,26 @@ export default function App() {
             active={view === 'chat'} 
             onClick={() => setView('chat')} 
             icon={<MessageSquare size={18} />} 
-            label={lang === 'en' ? 'AI Assistant' : 'AI सहायक'} 
+            label={t('nav.chat')} 
           />
           <SidebarItem 
             active={view === 'dashboard'} 
             onClick={() => setView('dashboard')} 
             icon={<LayoutDashboard size={18} />} 
-            label={lang === 'en' ? 'Officer Dashboard' : 'अधिकारी डैशबोर्ड'} 
+            label={t('nav.dashboard')} 
             badge={stats.pending}
           />
           <SidebarItem 
             active={view === 'track'} 
             onClick={() => setView('track')} 
             icon={<Search size={18} />} 
-            label={lang === 'en' ? 'Track Complaint' : 'शिकायत ट्रैक करें'} 
+            label={t('nav.track')} 
           />
           <SidebarItem 
             active={view === 'public_feed'} 
             onClick={() => setView('public_feed')} 
             icon={<TrendingUp size={18} />} 
-            label={lang === 'en' ? 'Transparency Feed' : 'ट्रांसपेरेंसी फीड'} 
+            label={t('nav.feed')} 
           />
 
           <div className="px-5 mt-6 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">Categories</div>
@@ -1918,7 +1911,6 @@ export default function App() {
       <MobileNav
         view={view}
         onNavigate={setView}
-        lang={lang}
         pendingCount={stats.pending}
       />
 

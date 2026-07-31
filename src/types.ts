@@ -32,7 +32,12 @@ export interface SystemNotification {
 }
 
 export type ViewType = 'chat' | 'dashboard' | 'track' | 'public_feed';
-export type LangType = 'en' | 'hi';
+/**
+ * Single definition, owned by the i18n layer. This used to be a local
+ * `'en' | 'hi'` union, which meant adding a language silently failed to
+ * typecheck in every component that had its own copy of the assumption.
+ */
+export type { LangType } from './i18n/locales';
 
 export interface ChatMessage {
   id: string;

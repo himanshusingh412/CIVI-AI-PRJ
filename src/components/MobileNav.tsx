@@ -1,5 +1,7 @@
 import { MessageSquare, LayoutDashboard, Search, TrendingUp } from 'lucide-react';
 import type { ViewType } from '../types';
+import { useT } from '../i18n/I18nContext';
+import type { StringKey } from '../i18n/strings';
 
 /**
  * Bottom navigation for viewports below `lg`, where the sidebar is hidden.
@@ -12,24 +14,26 @@ import type { ViewType } from '../types';
  * and safe-area padding so it clears the iOS home indicator.
  */
 
-const ITEMS: { view: ViewType; label: string; labelHi: string; Icon: typeof MessageSquare }[] = [
-  { view: 'chat', label: 'Assistant', labelHi: 'सहायक', Icon: MessageSquare },
-  { view: 'dashboard', label: 'Dashboard', labelHi: 'डैशबोर्ड', Icon: LayoutDashboard },
-  { view: 'track', label: 'Track', labelHi: 'ट्रैक', Icon: Search },
-  { view: 'public_feed', label: 'Feed', labelHi: 'फीड', Icon: TrendingUp },
+// Labels are dictionary keys, not literals. This component previously
+// carried its own inline Hindi strings, which is how it ended up pinned to
+// a two-language union while the rest of the app moved to twelve.
+const ITEMS: { view: ViewType; key: StringKey; Icon: typeof MessageSquare }[] = [
+  { view: 'chat', key: 'nav.chat', Icon: MessageSquare },
+  { view: 'dashboard', key: 'nav.dashboard', Icon: LayoutDashboard },
+  { view: 'track', key: 'nav.track', Icon: Search },
+  { view: 'public_feed', key: 'nav.feed', Icon: TrendingUp },
 ];
 
 export function MobileNav({
   view,
   onNavigate,
-  lang,
   pendingCount,
 }: {
   view: ViewType;
   onNavigate: (v: ViewType) => void;
-  lang: 'en' | 'hi';
   pendingCount: number;
 }) {
+  const t = useT();
   return (
     <nav
       aria-label="Primary"
@@ -41,14 +45,15 @@ export function MobileNav({
       }}
     >
       <ul className="grid grid-cols-4">
-        {ITEMS.map(({ view: v, label, labelHi, Icon }) => {
+        {ITEMS.map(({ view: v, key, Icon }) => {
+          const label = t(key);
           const active = view === v;
           return (
             <li key={v}>
               <button
                 onClick={() => onNavigate(v)}
                 aria-current={active ? 'page' : undefined}
-                aria-label={lang === 'hi' ? labelHi : label}
+                aria-label={label}
                 className="press relative w-full min-h-[56px] flex flex-col items-center justify-center gap-1 pt-2 pb-1.5"
                 style={{ color: active ? 'var(--color-cta)' : 'var(--color-content-3)' }}
               >
@@ -65,7 +70,7 @@ export function MobileNav({
                   )}
                 </span>
                 <span className="text-[11px] font-bold leading-none">
-                  {lang === 'hi' ? labelHi : label}
+                  {label}
                 </span>
                 {/* Active pill grows from the centre — spatial, not decorative. */}
                 <span
