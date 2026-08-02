@@ -42,6 +42,7 @@ import { scoreDuplicates, classify } from './duplicates.js';
 import { runSlaSweep, startSlaScheduler } from './sla.js';
 import { mediaRouter, serveMedia } from './media.js';
 import { complaintsRouter } from './complaints.js';
+import { smsStatus } from './sms.js';
 import { seedDemoData, storeStatus, initStore, store } from './store.js';
 
 const PORT = Number(process.env.PORT || 8787);
@@ -396,6 +397,7 @@ app.get('/api/health', (_req, res) =>
     ok: true,
     providers: providerStatus(),
     email: emailStatus(),
+    sms: smsStatus(),
     google: googleAuthStatus(),
     bot: botStatus(),
     sessions: sessionStats(),
@@ -442,7 +444,7 @@ if (!isServerless) {
     const p = providerStatus();
     console.log(`[server] CivicAI API on http://localhost:${PORT}`);
     console.log(`[server] gemini=${p.gemini.configured ? p.gemini.model : 'off'} claude=${p.claude.configured ? p.claude.model : 'off'}`);
-    console.log(`[server] google-signin=${googleAuthStatus().enabled ? 'on' : 'off'} email=${emailStatus().provider} bot=${botStatus().captcha}`);
+    console.log(`[server] google-signin=${googleAuthStatus().enabled ? 'on' : 'off'} sms=${smsStatus().provider} bot=${botStatus().captcha}`);
     console.log(`[server] daily budget ${LIMITS.DAILY_REQUEST_BUDGET} · max ${LIMITS.MAX_CONCURRENT} concurrent · ${LIMITS.MAX_OUTPUT_TOKENS} output tokens`);
   });
 

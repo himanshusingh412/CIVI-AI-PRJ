@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
-import { sendOtpEmail, isValidEmail, maskEmail } from './email.js';
+import { sendOtpSms, normalisePhone, maskPhone } from './sms.js';
 import { tokenFromRequest, safeEqual } from './security.js';
 
 // ───────────────────────── config ─────────────────────────
@@ -60,27 +60,34 @@ sweep.unref?.();
 const sha256 = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
 
 export type ParsedIdentifier =
-  | { ok: true; channel: 'email'; canonical: string; display: string }
+  | { ok: true; channel: 'phone'; canonical: string; display: string }
   | { ok: false; reason: string };
 
-/** Email-only. Phone/SMS auth was removed in favour of Google + email OTP. */
+/**
+ * Mobile number. The OTP channel is SMS; Google remains the other way in.
+ *
+ * Canonicalised to E.164 (+91XXXXXXXXXX) BEFORE anything else touches it,
+ * because the canonical form is the rate-limit key, the OTP-store key and
+ * the hashed session subject. If "9876543210" and "+91 98765 43210" produced
+ * different keys, the same person could bypass their own rate limit simply
+ * by retyping their number with spaces.
+ */
 export function parseIdentifier(raw: string): ParsedIdentifier {
   const value = String(raw || '').trim();
-  if (!value) return { ok: false, reason: 'Enter your email address.' };
+  if (!value) return { ok: false, reason: 'Enter your mobile number.' };
 
-  const check = isValidEmail(value);
+  const parsed = normalisePhone(value);
   // Format feedback is safe: it describes the input, not whether an account exists.
-  if (!check.ok) return { ok: false, reason: check.reason! };
+  if (!parsed.ok) return { ok: false, reason: parsed.reason };
 
-  const canonical = value.toLowerCase();
-  return { ok: true, channel: 'email', canonical, display: maskEmail(canonical) };
+  return { ok: true, channel: 'phone', canonical: parsed.e164, display: maskPhone(parsed.e164) };
 }
 
 // ───────────────────────── OTP flow ─────────────────────────
 export type RequestOtpResult =
   | {
       ok: true;
-      channel: 'email';
+      channel: 'phone';
       maskedIdentifier: string;
       expiresInSec: number;
       message: string;
@@ -138,7 +145,7 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
   }
 
   const otp = String(crypto.randomInt(100000, 1000000)); // 6-digit
-  const delivery = await sendOtpEmail(parsed.canonical, otp);
+  const delivery = await sendOtpSms(parsed.canonical, otp);
 
   // A delivery failure is NOT reported to the client: "we couldn't email
   // that address" is a strong account/validity oracle. Log it, record the
@@ -158,7 +165,7 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
 
   return {
     ok: true,
-    channel: 'email',
+    channel: 'phone',
     maskedIdentifier: parsed.display,
     expiresInSec: Math.floor(AUTH_LIMITS.OTP_TTL_MS / 1000),
     message: GENERIC_OTP_SENT,
@@ -402,4 +409,23 @@ export const sessionStats = () => ({
 export function sessionMatchesEmail(subjectHash: string | undefined, email: string): boolean {
   if (!subjectHash || !email) return false;
   return safeEqual(subjectHash, sha256(email.trim().toLowerCase()));
+}
+
+/**
+ * Phone equivalent of the above.
+ *
+ * Needed because there are now two ways to become the same person: Google
+ * hands back an email, SMS OTP hands back a number. If admin identity were
+ * still keyed only on email, signing in by phone would silently produce a
+ * session with no admin rights — locking the operator out of their own
+ * portal with a 403 and no explanation.
+ *
+ * Both sides are normalised through normalisePhone before hashing, so
+ * "9876543210" in .env matches a "+91 98765 43210" sign-in.
+ */
+export function sessionMatchesPhone(subjectHash: string | undefined, phone: string): boolean {
+  if (!subjectHash || !phone) return false;
+  const parsed = normalisePhone(phone);
+  if (!parsed.ok) return false;
+  return safeEqual(subjectHash, sha256(parsed.e164));
 }

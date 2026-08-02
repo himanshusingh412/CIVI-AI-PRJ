@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, Mail, ShieldCheck, User } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, ShieldCheck, Smartphone, User } from 'lucide-react';
 import { Button } from './Button';
 import { PageBackground } from './backgrounds/PageBackground';
 import { useTheme } from '../context/ThemeContext';
@@ -9,7 +9,7 @@ import {
   requestOtp,
   verifyOtp,
   googleSignIn,
-  validateEmail,
+  validatePhone,
   isAuthError,
   type AuthUser,
 } from '../services/authService';
@@ -52,7 +52,7 @@ export function LoginScreen({
   const [configLoading, setConfigLoading] = useState(!BUILD_TIME_CLIENT_ID);
 
   const [step, setStep] = useState<Step>('identify');
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [maskedIdentifier, setMasked] = useState('');
 
@@ -61,7 +61,7 @@ export function LoginScreen({
   /**
    * The one-time code, when the server chose to hand it back.
    *
-   * It only ever does so when email delivery is in console mode AND
+   * It only ever does so when SMS delivery is in console mode AND
    * NODE_ENV is not production (see server/auth.ts). That gate is the
    * security boundary and is not relaxed here — this only displays what the
    * server already decided was safe to return.
@@ -86,7 +86,7 @@ export function LoginScreen({
   }, []);
 
   // Pull the live client ID from the server; ignore failures and keep the
-  // build-time fallback so the email path always stays usable.
+  // build-time fallback so the SMS path always stays usable.
   useEffect(() => {
     const ac = new AbortController();
     (async () => {
@@ -133,7 +133,7 @@ export function LoginScreen({
   }, [step]);
 
   const completeSignIn = useCallback(
-    (identifier: string, channel: 'email' | 'google') => {
+    (identifier: string, channel: 'phone' | 'google') => {
       onSignedIn({ identifier, channel });
     },
     [onSignedIn],
@@ -203,20 +203,20 @@ export function LoginScreen({
     };
   }, [step, isDark, googleClientId, handleGoogleCredential]);
 
-  // ── email OTP ──
-  const emailValid = validateEmail(email).ok;
+  // ── SMS OTP ──
+  const phoneValid = validatePhone(phone).ok;
 
   const handleRequestOtp = async () => {
     setError(null);
     setInfo(null);
 
-    const check = validateEmail(email);
+    const check = validatePhone(phone);
     if (!check.ok) {
       setError(check.reason!);
       return;
     }
 
-    const res = await requestOtp(email, {
+    const res = await requestOtp(phone, {
       formElapsedMs: Date.now() - mountedAt.current,
       company: honeypot,
     });
@@ -247,7 +247,7 @@ export function LoginScreen({
       return;
     }
 
-    const res = await verifyOtp(email, otp);
+    const res = await verifyOtp(phone, otp);
     if (!mounted.current) return;
 
     if (isAuthError(res)) {
@@ -265,7 +265,7 @@ export function LoginScreen({
     completeSignIn(res.identifier, res.channel);
   };
 
-  const backToEmail = () => {
+  const backToPhone = () => {
     setStep('identify');
     setOtp('');
     setError(null);
@@ -388,8 +388,8 @@ export function LoginScreen({
           </h1>
           <p className="text-sm mt-1.5 text-content-3">
             {step === 'identify'
-              ? 'Continue with Google, or use a one-time email code'
-              : 'Enter the code we emailed you'}
+              ? 'Continue with Google, or use a one-time SMS code'
+              : 'Enter the code we texted you'}
           </p>
 
           {/* Escape hatch back to the chooser. On the admin portal this links
@@ -458,7 +458,7 @@ export function LoginScreen({
               and restart it" — a message written for whoever deploys the app,
               displayed to citizens who cannot act on it and should not be
               told what the server is missing. Sign-in options a user cannot
-              use are simply absent; the email path stands on its own.
+              use are simply absent; the SMS path stands on its own.
               Operators still get the truth from GET /api/health and
               `npm run doctor`.
             */}
@@ -493,26 +493,35 @@ export function LoginScreen({
               </div>
 
               <div>
-                <label htmlFor="email" className="block text-[13px] font-semibold mb-1.5 text-content">
-                  Email address
+                <label htmlFor="phone" className="block text-[13px] font-semibold mb-1.5 text-content">
+                  Mobile number
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-content-3" size={18} aria-hidden="true" />
+                  <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-content-3" size={18} aria-hidden="true" />
+                  {/* +91 shown as fixed chrome rather than pre-filled text:
+                      a prefix inside the value gets selected and deleted by
+                      people typing over it, then fails validation. */}
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-10 top-1/2 -translate-y-1/2 text-base font-semibold text-content-3 tabular-nums"
+                  >
+                    +91
+                  </span>
                   <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    maxLength={254}
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={14}
                     required
-                    aria-describedby="email-hint"
+                    aria-describedby="phone-hint"
                     aria-invalid={!!error || undefined}
                     disabled={lockedFor > 0}
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={e => { setEmail(e.target.value); setError(null); }}
-                    className="w-full h-12 pl-11 pr-4 rounded-xl outline-none text-base transition-colors
+                    placeholder="98765 43210"
+                    value={phone}
+                    onChange={e => { setPhone(e.target.value); setError(null); }}
+                    className="w-full h-12 pl-[4.75rem] pr-4 rounded-xl outline-none text-base transition-colors
                                border-2 focus:border-cta hover:border-[var(--color-content-3)]
                                disabled:opacity-60 disabled:cursor-not-allowed"
                     style={{
@@ -522,8 +531,8 @@ export function LoginScreen({
                     }}
                   />
                 </div>
-                <p id="email-hint" className="text-xs mt-1.5 text-content-3">
-                  We'll email a 6-digit code. No password needed.
+                <p id="phone-hint" className="text-xs mt-1.5 text-content-3">
+                  We'll text a 6-digit code. No password needed.
                 </p>
               </div>
 
@@ -531,11 +540,11 @@ export function LoginScreen({
                 type="submit"
                 fullWidth
                 size="lg"
-                disabled={lockedFor > 0 || !emailValid}
+                disabled={lockedFor > 0 || !phoneValid}
                 loadingText="Sending code…"
                 onClick={() => handleRequestOtp()}
               >
-                {lockedFor > 0 ? 'Temporarily locked' : 'Email me a code'}
+                {lockedFor > 0 ? 'Temporarily locked' : 'Text me a code'}
                 <ChevronRight size={18} aria-hidden="true" />
               </Button>
 
@@ -551,7 +560,7 @@ export function LoginScreen({
             onSubmit={e => { e.preventDefault(); void handleVerifyOtp(); }}
           >
             {/*
-              No email provider configured, so the server printed the code to
+              No SMS provider configured, so the server printed the code to
               its console instead of sending it. Showing it here saves digging
               through terminal output to sign in.
 
@@ -571,7 +580,7 @@ export function LoginScreen({
               >
                 <p className="text-[11px] font-black uppercase tracking-widest mb-2"
                    style={{ color: 'var(--color-warning)' }}>
-                  Email not configured · development only
+                  SMS not configured · development only
                 </p>
                 <div className="flex items-center gap-3 flex-wrap">
                   <code
@@ -590,7 +599,7 @@ export function LoginScreen({
                   </button>
                 </div>
                 <p className="text-[11px] mt-2" style={{ color: 'var(--color-warning)' }}>
-                  Set RESEND_API_KEY in .env to receive codes by email instead.
+                  Set MSG91_AUTH_KEY or TWILIO_* in .env to receive real SMS instead.
                 </p>
               </div>
             )}
@@ -664,7 +673,7 @@ export function LoginScreen({
                 {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
               </Button>
               <span aria-hidden="true" style={{ color: 'var(--color-border-strong)' }}>|</span>
-              <Button variant="ghost" size="sm" onClick={backToEmail}>
+              <Button variant="ghost" size="sm" onClick={backToPhone}>
                 Change email
               </Button>
             </div>

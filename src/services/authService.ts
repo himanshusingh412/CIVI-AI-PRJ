@@ -7,7 +7,7 @@
  * (double-submit pattern).
  */
 
-export type Channel = 'email' | 'google';
+export type Channel = 'phone' | 'google';
 
 export type AuthUser = {
   identifier: string;   // already masked by the server
@@ -32,7 +32,7 @@ export type SessionOk = {
 
 export type RequestOtpOk = {
   ok: true;
-  channel: 'email';
+  channel: 'phone';
   maskedIdentifier: string;
   expiresInSec: number;
   message: string;
@@ -171,10 +171,23 @@ export { isAuthError };
 
 // ───────────────────────── validation ─────────────────────────
 
-export function validateEmail(raw: string): { ok: boolean; reason?: string } {
-  const e = raw.trim().toLowerCase();
-  if (!e) return { ok: false, reason: 'Enter your email address.' };
-  if (e.length > 254) return { ok: false, reason: 'Email address is too long.' };
-  if (!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(e)) return { ok: false, reason: 'Enter a valid email address.' };
+/**
+ * Client-side mobile validation. Mirrors server/sms.ts deliberately —
+ * the server is authoritative, this only saves a round trip to be told
+ * something the browser already knew.
+ *
+ * Accepts what people actually type: 9876543210, 09876543210, +91 98765
+ * 43210, 91-9876543210.
+ */
+export function validatePhone(raw: string): { ok: boolean; reason?: string } {
+  const digits = String(raw ?? '').replace(/[^\d]/g, '');
+  if (!digits) return { ok: false, reason: 'Enter your mobile number.' };
+
+  let local = digits;
+  if (local.length === 12 && local.startsWith('91')) local = local.slice(2);
+  else if (local.length === 11 && local.startsWith('0')) local = local.slice(1);
+
+  if (local.length !== 10) return { ok: false, reason: 'Enter a 10-digit Indian mobile number.' };
+  if (!/^[6-9]/.test(local)) return { ok: false, reason: 'Indian mobile numbers start with 6, 7, 8 or 9.' };
   return { ok: true };
 }

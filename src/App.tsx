@@ -200,7 +200,7 @@ export default function App() {
   const { isDark: isDarkMode, toggleTheme } = useTheme();
   const isAuthenticated = status === 'authenticated';
 
-  const handleSignedIn = useCallback((u: { identifier: string; channel: 'email' | 'google' }) => {
+  const handleSignedIn = useCallback((u: { identifier: string; channel: 'phone' | 'google' }) => {
     onSignedIn(u);
     setShowOnboarding(true);
   }, [onSignedIn]);

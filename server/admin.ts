@@ -9,7 +9,7 @@ import {
   isTerminal, type Status,
 } from './workflow.js';
 import { store, storeStatus, type Complaint } from './store.js';
-import { getSession, sessionMatchesEmail } from './auth.js';
+import { getSession, sessionMatchesEmail, sessionMatchesPhone } from './auth.js';
 import { tokenFromRequest, safeError } from './security.js';
 import { ipOf } from './rateLimit.js';
 
@@ -72,10 +72,15 @@ function principalFrom(req: express.Request): Principal | null {
   // Match on the session's subject hash, not the displayed identifier —
   // that value is masked ("hi•••@gmail.com") and could never equal a real
   // address, which silently disabled SUPER_ADMIN_EMAIL entirely.
+  // Two doors to the same identity: Google gives an email, SMS OTP gives a
+  // number. Either configured value grants super_admin, so switching the OTP
+  // channel to SMS cannot lock the operator out.
   const superEmail = process.env.SUPER_ADMIN_EMAIL || '';
-  const mapped = superEmail && sessionMatchesEmail(session.subjectHash, superEmail)
-    ? DEMO_PRINCIPALS.super
-    : null;
+  const superPhone = process.env.SUPER_ADMIN_PHONE || '';
+  const isSuper =
+    (superEmail && sessionMatchesEmail(session.subjectHash, superEmail)) ||
+    (superPhone && sessionMatchesPhone(session.subjectHash, superPhone));
+  const mapped = isSuper ? DEMO_PRINCIPALS.super : null;
 
   if (!mapped) return null; // deny by default
   return { id: session.identifier, ...mapped };
