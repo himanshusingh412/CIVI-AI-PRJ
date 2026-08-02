@@ -62,6 +62,18 @@ if (!env) {
     ['AI_API_KEY', false, () => true, ''],
     ['AWS_BEARER_TOKEN_BEDROCK', false, () => true, ''],
     ['RESEND_API_KEY', false, () => true, ''],
+    /**
+     * DATABASE_URL was absent from this list, which made the doctor silent
+     * about the single variable that decides whether anything is saved.
+     *
+     * Both validations below cost real debugging time when wrong:
+     *   -pooler   a direct connection exhausts its slot limit under
+     *             serverless, failing only once traffic arrives
+     *   sslmode   Neon refuses the connection outright without it
+     */
+    ['DATABASE_URL', false,
+      v => v.startsWith('postgres') && v.includes('-pooler.') && v.includes('sslmode=require'),
+      'use the POOLED string (host contains "-pooler") and keep ?sslmode=require'],
   ];
   // Copy-pasting docs verbatim leaves things like "<your new key>" behind.
   // These are worse than empty: the app treats them as configured and every

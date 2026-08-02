@@ -58,6 +58,15 @@ export function LoginScreen({
 
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  /**
+   * The one-time code, when the server chose to hand it back.
+   *
+   * It only ever does so when email delivery is in console mode AND
+   * NODE_ENV is not production (see server/auth.ts). That gate is the
+   * security boundary and is not relaxed here — this only displays what the
+   * server already decided was safe to return.
+   */
+  const [devCode, setDevCode] = useState<string | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
   const [resendIn, setResendIn] = useState(0);
   const [lockedFor, setLockedFor] = useState(0);
@@ -227,7 +236,8 @@ export function LoginScreen({
     setOtp('');
     setAttemptsLeft(null);
     setResendIn(30);
-    setInfo(res.devOtp ? `${res.message} · dev code: ${res.devOtp}` : res.message);
+    setDevCode(res.devOtp ?? null);
+    setInfo(res.message);
   };
 
   const handleVerifyOtp = async () => {
@@ -387,7 +397,7 @@ export function LoginScreen({
           {step === 'identify' && (
             <button
               type="button"
-              onClick={() => (fixedAudience ? navigate('/') : setAudience(null))}
+              onClick={() => { setDevCode(null); fixedAudience ? navigate('/') : setAudience(null); }}
               className="press inline-flex items-center gap-1.5 mt-3 text-[12px] font-bold uppercase
                          tracking-wider text-content-3 hover:text-cta transition-colors"
             >
@@ -540,6 +550,51 @@ export function LoginScreen({
             noValidate
             onSubmit={e => { e.preventDefault(); void handleVerifyOtp(); }}
           >
+            {/*
+              No email provider configured, so the server printed the code to
+              its console instead of sending it. Showing it here saves digging
+              through terminal output to sign in.
+
+              Deliberately loud rather than subtle: a panel that looks like
+              part of the product is one that survives to production. The
+              server only returns this code when delivery is in console mode
+              and NODE_ENV is not production — set RESEND_API_KEY and it
+              disappears on its own, with no code change.
+            */}
+            {devCode && (
+              <div
+                className="rounded-xl p-4"
+                style={{
+                  background: 'var(--color-warning-pale)',
+                  border: '1px dashed var(--color-warning)',
+                }}
+              >
+                <p className="text-[11px] font-black uppercase tracking-widest mb-2"
+                   style={{ color: 'var(--color-warning)' }}>
+                  Email not configured · development only
+                </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <code
+                    className="font-mono text-2xl font-bold tracking-[0.35em] select-all"
+                    style={{ color: 'var(--color-content)' }}
+                  >
+                    {devCode}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => { setOtp(devCode); otpInputRef.current?.focus(); }}
+                    className="press ml-auto px-3 py-1.5 rounded-lg text-[12px] font-bold bordered surface
+                               text-content-2 hover:text-cta transition-colors"
+                  >
+                    Use this code
+                  </button>
+                </div>
+                <p className="text-[11px] mt-2" style={{ color: 'var(--color-warning)' }}>
+                  Set RESEND_API_KEY in .env to receive codes by email instead.
+                </p>
+              </div>
+            )}
+
             <div>
               <label htmlFor="otp" className="block text-[13px] font-semibold mb-1.5 text-content">
                 6-digit code

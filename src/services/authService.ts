@@ -58,7 +58,21 @@ const NETWORK_ERROR: AuthError = {
   message: 'Cannot reach the server. Check your connection and try again.',
 };
 
-const isDev = !!(import.meta as any).env?.DEV;
+/**
+ * "Am I a developer looking at this?" — answered by WHERE the page is served
+ * from, not by how it was built.
+ *
+ * `import.meta.env.DEV` is false in a production bundle, so running
+ * `npm run preview` on your own laptop produced the public-facing "service is
+ * temporarily unavailable" message: technically true, completely useless to
+ * the one person who could fix it. Anything on localhost gets the actionable
+ * text; a real deployment still gets the neutral one.
+ */
+const isLocalhost =
+  typeof location !== 'undefined' &&
+  /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/i.test(location.hostname);
+
+const isDev = !!(import.meta as any).env?.DEV || isLocalhost;
 
 /**
  * The API server being down is by far the most common local failure, and it
