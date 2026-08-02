@@ -78,6 +78,52 @@ const sessionKey = (req: express.Request) => {
 const aiLimiter = createRateLimiter({ name: 'ai', windowMs: 60_000, max: 10, keyFn: sessionKey });
 const chatLimiter = createRateLimiter({ name: 'chat', windowMs: 60_000, max: 15, keyFn: sessionKey });
 
+const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+/**
+ * Lazy, once-only boot.
+ *
+ * This used to be `await initStore()` at module top level. Two problems,
+ * both of which only bite on serverless:
+ *
+ *   1. Top-level await requires ESM output. If the platform's bundler emits
+ *      CJS, the module fails to PARSE — so `export default app` never runs
+ *      and every route returns an empty response. Nothing is logged from
+ *      inside the app because the app never loaded.
+ *   2. Even in ESM, it makes module import slow and failure-prone at exactly
+ *      the moment a request is waiting.
+ *
+ * Now nothing async happens at import time. The promise is created on first
+ * use and reused, so concurrent cold-start requests share one init instead
+ * of racing to connect N times.
+ */
+let bootPromise: Promise<void> | null = null;
+
+function boot(): Promise<void> {
+  if (!bootPromise) {
+    bootPromise = (async () => {
+      try {
+        await initStore();
+      } catch (err) {
+        console.error('[server] store init failed; continuing with the in-memory store', err);
+      }
+      if (!isServerless) {
+        // A setInterval on serverless is pointless — the container is frozen
+        // between requests. Production drives the sweep with a cron hitting
+        // POST /api/admin/sla/sweep.
+        startSlaScheduler();
+        try { await seedDemoData(); } catch { /* demo data is optional */ }
+      }
+    })();
+  }
+  return bootPromise;
+}
+
+/** Every API request waits for boot; after the first, this is a no-op await. */
+app.use('/api', (_req, _res, next) => {
+  boot().then(() => next(), next);
+});
+
 app.use('/api', globalLimiter);
 app.use('/api', csrfProtection);
 
@@ -98,7 +144,7 @@ app.post('/api/auth/request-otp', otpRequestLimiter, async (req, res) => {
         const parsed = parseIdentifier(identifier);
         return {
           ok: true as const,
-          channel: 'email' as const,
+          channel: 'phone' as const,
           maskedIdentifier: parsed.ok ? parsed.display : '',
           expiresInSec: Math.floor(AUTH_LIMITS.OTP_TTL_MS / 1000),
           message: GENERIC_OTP_SENT,
@@ -431,8 +477,6 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
  * listener — calling listen() there would crash the function. Only bind a
  * port when this module is the process entrypoint (local `npm run server`).
  */
-const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-
 /**
  * Boot work, guarded.
  *
@@ -444,21 +488,13 @@ const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_N
  *
  * So: nothing in here is allowed to throw.
  */
-try {
-  await initStore();
-} catch (err) {
-  console.error('[server] store init failed; continuing with the in-memory store', err);
+if (!isServerless) {
+  // Locally, finish booting before binding the port so the first request
+  // never races the store. `.then` rather than top-level await — see boot().
+  void boot().then(() => startLocalServer());
 }
 
-if (!isServerless) {
-  // A setInterval on serverless is pointless — the container is frozen
-  // between requests — and it keeps a timer alive per warm instance.
-  // Production drives the sweep with a cron hitting POST /api/admin/sla/sweep.
-  startSlaScheduler();
-  await seedDemoData();
-}
-
-if (!isServerless) {
+function startLocalServer() {
   const server = app.listen(PORT, () => {
     const p = providerStatus();
     console.log(`[server] CivicAI API on http://localhost:${PORT}`);
