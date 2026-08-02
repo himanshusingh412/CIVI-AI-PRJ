@@ -441,18 +441,23 @@ export function LoginScreen({
                   <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in…</p>
                 )}
               </div>
-            ) : (
-              <div
-                className="rounded-xl p-3.5 mb-1 text-[13px]"
-                style={{ background: 'var(--color-info-pale)', color: 'var(--color-info)', border: '1px solid var(--color-info)' }}
-              >
-                Google sign-in isn't available right now. Set <code className="font-mono">GOOGLE_CLIENT_ID</code> in
-                the server's <code className="font-mono">.env</code> and restart it. You can still sign in with an
-                email code below.
-              </div>
-            )}
+            ) : null}
+            {/*
+              When Google is unconfigured, show nothing at all.
+              This used to render "Set GOOGLE_CLIENT_ID in the server's .env
+              and restart it" — a message written for whoever deploys the app,
+              displayed to citizens who cannot act on it and should not be
+              told what the server is missing. Sign-in options a user cannot
+              use are simply absent; the email path stands on its own.
+              Operators still get the truth from GET /api/health and
+              `npm run doctor`.
+            */}
 
-            <div className="flex items-center gap-3 my-5" aria-hidden="true">
+            {/* The divider only means something when there is a choice above it. */}
+            <div
+              className={`items-center gap-3 my-5 ${googleClientId || configLoading ? 'flex' : 'hidden'}`}
+              aria-hidden="true"
+            >
               <span className="h-px flex-1" style={{ background: 'var(--color-border)' }} />
               <span className="text-[11px] font-bold uppercase tracking-widest text-content-3">or</span>
               <span className="h-px flex-1" style={{ background: 'var(--color-border)' }} />
