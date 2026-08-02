@@ -431,13 +431,32 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
  * listener — calling listen() there would crash the function. Only bind a
  * port when this module is the process entrypoint (local `npm run server`).
  */
-await initStore();
-// Start sweeping only after the store is ready, or the first sweep runs
-// against an empty in-memory list and reports nothing overdue.
-startSlaScheduler();
-await seedDemoData();
-
 const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+/**
+ * Boot work, guarded.
+ *
+ * This block runs at MODULE LOAD, which on Vercel means on every cold start
+ * and inside the request path. An exception here does not fail one route —
+ * it fails the module import, so `export default app` never happens and
+ * every single endpoint 500s. That is precisely how the app could work on
+ * localhost and be completely dead once deployed.
+ *
+ * So: nothing in here is allowed to throw.
+ */
+try {
+  await initStore();
+} catch (err) {
+  console.error('[server] store init failed; continuing with the in-memory store', err);
+}
+
+if (!isServerless) {
+  // A setInterval on serverless is pointless — the container is frozen
+  // between requests — and it keeps a timer alive per warm instance.
+  // Production drives the sweep with a cron hitting POST /api/admin/sla/sweep.
+  startSlaScheduler();
+  await seedDemoData();
+}
 
 if (!isServerless) {
   const server = app.listen(PORT, () => {

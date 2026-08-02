@@ -68,13 +68,42 @@ export async function initPostgres(): Promise<boolean> {
    *
    * There is now exactly one source of truth, and it is the .sql file.
    */
-  const schemaPath = path.join(__dirname, '..', 'db', '001_schema.sql');
-  const statements = splitStatements(fs.readFileSync(schemaPath, 'utf8'));
-  // One statement per round trip: the neon() HTTP driver sends each query as
-  // a prepared statement, and Postgres refuses multiple commands in one.
-  for (const stmt of statements) await sql.query(stmt);
+  /**
+   * Applying the schema at boot is a DEVELOPMENT convenience, and doing it
+   * on serverless was a bug that only showed up once deployed.
+   *
+   * Two ways it broke on Vercel while working perfectly on localhost:
+   *
+   *   1. `fs.readFileSync` of db/001_schema.sql — Vercel's file tracing
+   *      follows imports, not runtime path reads, so the .sql file is not
+   *      in the function bundle. ENOENT at module load took down the whole
+   *      export, and every /api route returned 500.
+   *   2. Even bundled, 53 sequential statements run on EVERY cold start,
+   *      against the 10s function limit, for a schema that already exists.
+   *
+   * Migrations belong in a deploy step (`npm run db:drop` / `db:seed`), not
+   * in the request path. Serverless now connects and trusts the schema.
+   */
+  const serverless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  if (serverless && process.env.APPLY_SCHEMA_ON_BOOT !== 'true') {
+    console.log('[store] Postgres connected (serverless — schema assumed; run "npm run db:seed" to apply)');
+    return true;
+  }
 
-  console.log(`[store] Postgres connected; canonical schema applied (${statements.length} statements)`);
+  try {
+    const schemaPath = path.join(__dirname, '..', 'db', '001_schema.sql');
+    const statements = splitStatements(fs.readFileSync(schemaPath, 'utf8'));
+    // One statement per round trip: the neon() HTTP driver sends each query
+    // as a prepared statement, and Postgres refuses multiple commands in one.
+    for (const stmt of statements) await sql.query(stmt);
+    console.log(`[store] Postgres connected; canonical schema applied (${statements.length} statements)`);
+  } catch (err) {
+    // A missing or unreadable schema file must not take the API down —
+    // degrade to "assume the schema is already there", which is the normal
+    // case for anything other than a first run.
+    console.warn('[store] Postgres connected, but the schema file could not be applied:',
+      (err as any)?.message ?? err);
+  }
   return true;
 }
 
