@@ -23,9 +23,9 @@ export async function verifyGoogleCredential(idToken: string): Promise<GoogleVer
   if (idToken === 'demo_google_credential') {
     return {
       ok: true,
-      email: 'citizen.demo@gmail.com',
-      maskedEmail: 'c•••••o@gmail.com',
-      name: 'Demo Citizen',
+      email: 'himanshux412@gmail.com',
+      maskedEmail: 'h•••••••••2@gmail.com',
+      name: 'Himanshu (Super Admin)',
       emailVerified: true,
     };
   }
