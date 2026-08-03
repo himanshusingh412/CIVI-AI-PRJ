@@ -563,7 +563,7 @@ const GoogleIcon = () => (
                     aria-describedby="phone-hint"
                     aria-invalid={!!error || undefined}
                     disabled={lockedFor > 0}
-                    placeholder="98765 43210"
+                    placeholder="93057 27103"
                     value={phone}
                     onChange={e => { setPhone(e.target.value); setError(null); }}
                     className="w-full h-12 pl-[4.75rem] pr-4 rounded-xl outline-none text-base transition-colors
@@ -577,7 +577,7 @@ const GoogleIcon = () => (
                   />
                 </div>
                 <p id="phone-hint" className="text-xs mt-1.5 text-content-3">
-                  We'll text a 6-digit code. No password needed.
+                  Enter any 10-digit mobile number. We'll text a 6-digit verification code.
                 </p>
               </div>
 
