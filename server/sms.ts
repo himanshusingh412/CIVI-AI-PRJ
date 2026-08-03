@@ -76,7 +76,7 @@ export function isValidPhone(raw: string): { ok: boolean; reason?: string } {
 
 export async function sendOtpSms(to: string, otp: string): Promise<SmsResult> {
   const status = smsStatus();
-  const body = `${otp} is your CivicAI verification code. It expires in 10 minutes. Do not share it with anyone.`;
+  const body = `Your verification code is ${otp}. It expires in 5 minutes.`;
 
   if (!status.enabled) {
     console.log(`[sms] (console mode) OTP for ${maskPhone(to)} = ${otp}`);
