@@ -246,15 +246,32 @@ export function verifyOtp(rawIdentifier: string, otp: string): VerifyOtpResult {
 const SESSION_SECRET = (() => {
   const fromEnv = process.env.SESSION_SECRET;
   if (fromEnv && fromEnv.length >= 32) return fromEnv;
+
   if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'SESSION_SECRET must be set to a random string of at least 32 characters in production.',
+    // DO NOT throw here. Throwing at module-load time on Vercel causes the
+    // entire import chain to fail — `export default app` never runs and every
+    // /api route returns a bare 502 with nothing in the app logs, because the
+    // app never loaded. That is far worse than running with a degraded secret.
+    //
+    // Instead: log loudly, use a random ephemeral secret for this instance,
+    // and let /api/health surface the misconfiguration to the operator.
+    // Sessions issued by this instance will be invalidated on restart, which
+    // is bad UX but recoverable — the login screen is shown again rather than
+    // the entire API going dark.
+    //
+    // FIX: Go to Vercel → your project → Settings → Environment Variables
+    // and add SESSION_SECRET with a value from: openssl rand -base64 48
+    console.error(
+      '[auth] FATAL CONFIG: SESSION_SECRET is not set (or is shorter than 32 chars). ' +
+      'Add it in Vercel → Settings → Environment Variables. ' +
+      'Using a per-instance ephemeral secret; ALL SESSIONS INVALIDATE ON RESTART.',
+    );
+  } else {
+    console.warn(
+      '[auth] SESSION_SECRET not set — using an ephemeral dev secret. ' +
+      'Sessions will be invalidated on restart. Set SESSION_SECRET in .env.',
     );
   }
-  console.warn(
-    '[auth] SESSION_SECRET not set — using an ephemeral dev secret. ' +
-    'Sessions will be invalidated on restart. Set SESSION_SECRET in .env.',
-  );
   return crypto.randomBytes(32).toString('hex');
 })();
 

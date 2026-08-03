@@ -452,6 +452,11 @@ app.get('/api/health', (_req, res) =>
     budget: budgetStatus(),
     concurrency: concurrencyStatus(),
     limits: { ...LIMITS, auth: AUTH_LIMITS },
+    config: {
+      sessionSecret: !!(process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32),
+      databaseUrl: !!process.env.DATABASE_URL,
+      googleClientId: !!process.env.GOOGLE_CLIENT_ID,
+    },
   }),
 );
 
