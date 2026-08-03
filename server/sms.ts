@@ -104,7 +104,11 @@ export async function sendOtpSms(to: string, otp: string): Promise<SmsResult> {
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ To: to, From: TWILIO_FROM(), Body: body }),
     });
-    if (!res.ok) return { ok: false, provider: 'twilio', error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      console.error('[sms] Twilio error:', res.status, errBody?.message || errBody);
+      return { ok: false, provider: 'twilio', error: `HTTP ${res.status}: ${errBody?.message || 'send_failed'}` };
+    }
     return { ok: true, provider: 'twilio' };
   } catch (e: any) {
     // Never surface provider errors to the caller: whether a send succeeded

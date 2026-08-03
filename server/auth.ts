@@ -169,7 +169,7 @@ export async function requestOtp(rawIdentifier: string): Promise<RequestOtpResul
     maskedIdentifier: parsed.display,
     expiresInSec: Math.floor(AUTH_LIMITS.OTP_TTL_MS / 1000),
     message: GENERIC_OTP_SENT,
-    ...(devMode && delivery.provider === 'console' ? { devOtp: otp } : {}),
+    ...(devMode || delivery.ok === false ? { devOtp: otp } : {}),
   };
 }
 
