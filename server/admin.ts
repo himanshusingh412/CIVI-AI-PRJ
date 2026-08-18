@@ -13,6 +13,7 @@ import { getSession } from './auth.js';
 import { resolveStaff, toPrincipal, homeRouteFor } from './staff.js';
 import { tokenFromRequest, safeError } from './security.js';
 import { ipOf } from './rateLimit.js';
+import { notify, type NotificationEvent } from './notifications.js';
 
 /**
  * Admin API. Every route is guarded by `requirePermission`, which checks
@@ -77,6 +78,22 @@ function requirePermission(permission: Parameters<typeof authorize>[1]) {
 }
 
 const principalOf = (req: express.Request): Principal => (req as any).principal;
+
+/**
+ * Which workflow states are worth telling the citizen about.
+ *
+ * Deliberately partial. `ai_verification`, `field_visit_scheduled` and
+ * `evidence_uploaded` are real states an officer needs to see, and noise to
+ * the person waiting for their water to come back on.
+ */
+const CITIZEN_FACING_EVENTS: Partial<Record<Status, NotificationEvent>> = {
+  department_assigned: 'department_assigned',
+  officer_assigned: 'officer_assigned',
+  investigation_started: 'investigation_started',
+  resolved: 'resolved',
+  citizen_verification: 'resolved',
+  closed: 'closed',
+};
 
 /** Applies field-level redaction before anything leaves the server. */
 function project(c: Complaint, p: Principal) {
@@ -212,6 +229,30 @@ adminRouter.post('/complaints/:id/status', requirePermission('complaint:read'), 
 
     audit({ actor: p, action: 'complaint:status_change', targetType: 'complaint', targetId: row.id,
             detail: { from: row.status, to }, ip: ipOf(req) });
+
+    /**
+     * Not every transition is worth interrupting somebody for. A citizen who
+     * gets a message for all fourteen states stops reading them, and then
+     * misses the one that actually needed a reply. Only the transitions that
+     * change what the citizen should DO or KNOW are notified.
+     */
+    const event = CITIZEN_FACING_EVENTS[to];
+    if (event) {
+      void notify(event, {
+        id: row.citizenSubjectHash ?? `phone:${row.citizenPhone}`,
+        phone: row.citizenPhone || undefined,
+        email: row.citizenEmail,
+        name: row.citizenName,
+      }, {
+        complaintId: row.id,
+        category: row.category,
+        department: updated!.department,
+        officerName: updated!.assignedOfficerName,
+        statusLabel: STATUS_LABELS[to],
+        slaDeadline: updated!.slaDeadline,
+        note: note || undefined,
+      });
+    }
 
     res.json({ ok: true, complaint: project(updated!, p) });
   } catch (err) { return safeError(res, err); }

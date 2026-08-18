@@ -56,6 +56,8 @@ const DocumentVerificationPage = lazy(() =>
   import('./pages/DocumentVerificationPage.tsx').then(m => ({ default: m.DocumentVerificationPage })));
 const ReportWizardPage = lazy(() =>
   import('./pages/ReportWizardPage.tsx').then(m => ({ default: m.ReportWizardPage })));
+const NotificationSettingsPage = lazy(() =>
+  import('./pages/NotificationSettingsPage.tsx').then(m => ({ default: m.NotificationSettingsPage })));
 
 function CitizenPortal() {
   const { status } = useAuth();
@@ -95,6 +97,16 @@ createRoot(container).render(
                       <RequireAuth>
                         <Suspense fallback={<LoadingScreen label="Opening the assistant…" />}>
                           <AssistantPage />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/portal/settings"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening your settings…" />}>
+                          <NotificationSettingsPage />
                         </Suspense>
                       </RequireAuth>
                     }

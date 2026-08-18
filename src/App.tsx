@@ -37,6 +37,7 @@ import {
   Sparkles as SparklesIcon,
   FileSearch as FileSearchIcon,
   ClipboardList as ClipboardListIcon,
+  Bell as BellIcon,
 } from 'lucide-react';
 import {
   BarChart,
@@ -992,6 +993,11 @@ export default function App() {
             onClick={() => navigate('/portal/documents')}
             icon={<FileSearchIcon size={18} />}
             label={t('nav.documents')}
+          />
+          <SidebarItem
+            onClick={() => navigate('/portal/settings')}
+            icon={<BellIcon size={18} />}
+            label={t('nav.notifications')}
           />
           <SidebarItem 
             active={view === 'chat'} 

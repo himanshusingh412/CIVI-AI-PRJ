@@ -44,6 +44,10 @@ import { mediaRouter, serveMedia } from './media.js';
 import { complaintsRouter } from './complaints.js';
 import { documentsRouter, documentVerificationStatus } from './documents.js';
 import { digilockerRouter } from './digilockerRoutes.js';
+import { whatsappRouter } from './whatsappRoutes.js';
+import { notificationRouter } from './notificationRoutes.js';
+import { notificationStatus } from './notifications.js';
+import { whatsappStatus } from './whatsapp.js';
 import { smsStatus } from './sms.js';
 import { seedDemoData, storeStatus, initStore, store } from './store.js';
 import { publicConfig, integrations, flags } from './config.js';
@@ -56,7 +60,19 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(securityHeaders);
-app.use(express.json({ limit: '64kb' }));
+/**
+ * The raw body is stashed alongside the parsed one.
+ *
+ * WhatsApp signs its webhooks with an HMAC over the EXACT bytes it sent.
+ * Re-serialising the parsed object changes key order and whitespace and
+ * therefore the digest, so the original buffer has to survive parsing. A
+ * `verify` hook is the standard way to do that without reordering
+ * middleware or excluding the route from body parsing entirely.
+ */
+app.use(express.json({
+  limit: '64kb',
+  verify: (req, _res, buf) => { (req as any).rawBody = Buffer.from(buf); },
+}));
 
 // Reject malformed JSON with a clean 400 instead of an Express stack trace.
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -128,6 +144,20 @@ function boot(): Promise<void> {
 app.use('/api', (_req, _res, next) => {
   boot().then(() => next(), next);
 });
+
+/**
+ * WhatsApp is mounted BEFORE the global limiter and gets its own, larger
+ * budget. Meta batches inbound messages and retries aggressively; sharing
+ * the 120/min browser budget would mean a busy hour silently dropping
+ * citizens' complaints, and Meta responds to sustained failures by disabling
+ * the subscription entirely.
+ *
+ * CSRF does not apply: csrfProtection only engages when a session cookie is
+ * present, and Meta sends none. The webhook's authenticity is established by
+ * its HMAC signature instead — see server/whatsapp.ts.
+ */
+const whatsappLimiter = createRateLimiter({ name: 'whatsapp', windowMs: 60_000, max: 600 });
+app.use('/api/whatsapp', whatsappLimiter, whatsappRouter);
 
 app.use('/api', globalLimiter);
 app.use('/api', csrfProtection);
@@ -459,6 +489,7 @@ app.get('/api/media/:id', requireAuth, serveMedia);
  * be an unauthenticated page on a government domain that asks people to
  * approve sharing their documents.
  */
+app.use('/api/notifications', requireAuth, notificationRouter);
 app.use('/api/documents', requireAuth, documentsRouter);
 app.use('/api/digilocker', requireAuth, digilockerRouter);
 
@@ -532,6 +563,8 @@ app.get('/api/health', (_req, res) =>
     integrations: integrations(),
     staffDirectory: staffDirectoryStatus(),
     documentVerification: documentVerificationStatus(),
+    notifications: notificationStatus(),
+    whatsapp: whatsappStatus(),
   }),
 );
 

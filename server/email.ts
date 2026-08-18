@@ -108,3 +108,53 @@ export async function sendOtpEmail(to: string, otp: string): Promise<EmailResult
   console.log(`[email] (console mode) OTP for ${maskEmail(to)} = ${otp}`);
   return { ok: true, provider: 'console' };
 }
+
+
+/**
+ * General transactional email, for the notification service.
+ *
+ * Deliberately plain-text-first with a minimal HTML wrapper. A complaint
+ * status update is a short factual message; wrapping it in a marketing
+ * template makes it look like one, and a government notification that looks
+ * like marketing gets filed as marketing.
+ */
+export async function sendMail(to: string, subject: string, body: string): Promise<EmailResult> {
+  if (!EMAIL_ENABLED || !RESEND_API_KEY) {
+    console.log(`[email] (console mode) -> ${maskEmail(to)}: ${subject}`);
+    return { ok: true, provider: 'console' };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const escaped = body
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: EMAIL_FROM,
+        to: [to],
+        subject: `CivicAI: ${subject}`,
+        text: body,
+        html:
+          `<div style="font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;` +
+          `max-width:32rem;color:#0F172A;line-height:1.6;font-size:15px">${escaped}` +
+          `<p style="margin-top:24px;font-size:12px;color:#64748B">CivicAI · Citizen Grievance Portal</p></div>`,
+      }),
+      signal: controller.signal,
+    });
+    const rb: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error('[email] send failed:', rb?.message ?? res.status);
+      return { ok: false, provider: 'resend', error: String(rb?.message ?? res.status) };
+    }
+    return { ok: true, provider: 'resend', messageId: rb?.id };
+  } catch (err: any) {
+    return { ok: false, provider: 'resend', error: err?.message ?? 'network error' };
+  } finally {
+    clearTimeout(timer);
+  }
+}

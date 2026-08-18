@@ -2,6 +2,7 @@ import express from 'express';
 import { store, type Complaint } from './store.js';
 import { publish } from './events.js';
 import { scoreDuplicates, classify } from './duplicates.js';
+import { notify } from './notifications.js';
 import { generateJson, Type } from './providers.js';
 import { clampText } from './limits.js';
 
@@ -20,6 +21,16 @@ import { clampText } from './limits.js';
  * not a filter — the data already crossed the network.
  */
 export const complaintsRouter = express.Router();
+
+/**
+ * The in-app inbox is keyed on the session subject hash, matching
+ * server/notificationRoutes.ts. Keying on anything the client sends would
+ * let one person read another's notifications.
+ */
+const notificationKey = (req: express.Request): string => {
+  const s = (req as any).session;
+  return String(s?.subjectHash || s?.identifier || 'anonymous');
+};
 
 /** Fields safe to show on the transparency feed. */
 function toPublic(c: Complaint) {
@@ -102,6 +113,10 @@ complaintsRouter.post('/', async (req, res) => {
   const verdict = top ? classify(top.score) : 'distinct';
 
   const created = await store.create({
+    // Taken from the SESSION, never from the request body: a client-supplied
+    // value here would let anyone route another person's notifications to
+    // themselves.
+    citizenSubjectHash: (req as any).session?.subjectHash,
     citizenName: b.citizenName ?? 'Anonymous',
     citizenPhone: b.citizenPhone ?? '',
     citizenEmail: b.citizenEmail ?? undefined,
@@ -118,6 +133,24 @@ complaintsRouter.post('/', async (req, res) => {
   } as any);
 
   publish({ type: 'complaint_created', id: created.id });
+
+  /**
+   * Fire and forget, deliberately. A slow SMS gateway must never delay the
+   * 201 that tells a citizen their complaint exists — that response is the
+   * whole promise this system makes, and notify() already swallows its own
+   * failures rather than throwing.
+   */
+  void notify('complaint_registered', {
+    id: notificationKey(req),
+    phone: created.citizenPhone || undefined,
+    email: created.citizenEmail,
+    name: created.citizenName,
+  }, {
+    complaintId: created.id,
+    category: created.category,
+    department: created.department,
+    slaDeadline: created.slaDeadline,
+  });
 
   res.status(201).json({
     complaint: toPublic(created),
