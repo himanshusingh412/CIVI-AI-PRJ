@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { X, Clock, MapPin, User, Building2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { X, Clock, MapPin, User, Building2, AlertTriangle, ShieldCheck, Image, MessageSquare, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../Button';
-import { changeStatus, isAuthError, type AdminComplaint } from '../../services/adminService';
+import { changeStatus, addNote, isAuthError, type AdminComplaint } from '../../services/adminService';
 
 const PRIORITY_TOKEN: Record<string, string> = {
   Critical: 'var(--color-priority-critical)',
@@ -31,6 +31,8 @@ export function ComplaintDrawer({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [noteVisibility, setNoteVisibility] = useState<'internal' | 'public'>('internal');
+  const [savingNote, setSavingNote] = useState(false);
 
   // Escape closes — a drawer without a keyboard exit is a trap.
   useEffect(() => {
@@ -44,6 +46,25 @@ export function ComplaintDrawer({
   const doTransition = async (to: string) => {
     setError(null);
     const res = await changeStatus(complaint.id, to, note.trim() || undefined);
+    if (isAuthError(res)) { setError(res.message); return; }
+    setNote('');
+    onUpdated(res.complaint);
+  };
+
+  /**
+   * A note WITHOUT advancing the case.
+   *
+   * Before this, the only way to record "called the citizen, no answer" was
+   * to change the status - which quietly turned the status history into a
+   * log of things that did not happen. Recording work and reporting progress
+   * are different acts and now have different buttons.
+   */
+  const saveNote = async () => {
+    const body = note.trim();
+    if (!body) return;
+    setError(null); setSavingNote(true);
+    const res = await addNote(complaint.id, body, noteVisibility);
+    setSavingNote(false);
     if (isAuthError(res)) { setError(res.message); return; }
     setNote('');
     onUpdated(res.complaint);
@@ -140,6 +161,55 @@ export function ComplaintDrawer({
             <p className="text-sm text-content-2 leading-relaxed">{complaint.description}</p>
           </div>
 
+          {/* Evidence the citizen attached. An officer arguing about whether
+              a problem is real needs to see this before anything else. */}
+          {complaint.attachments?.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2 flex items-center gap-1.5">
+                <Image size={12} aria-hidden="true" /> Citizen evidence ({complaint.attachments.length})
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {complaint.attachments.map(a => (
+                  <a
+                    key={a.id}
+                    href={`/api/media/${encodeURIComponent(a.id)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="press rounded-xl overflow-hidden bordered aspect-square block"
+                    aria-label={`Open evidence ${a.filename}`}
+                  >
+                    <img
+                      src={`/api/media/${encodeURIComponent(a.id)}`}
+                      alt=""
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Internal notes. Staff-only by construction: the server strips
+              these entirely for roles that cannot see contact details. */}
+          {complaint.internalNotes?.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2 flex items-center gap-1.5">
+                <EyeOff size={12} aria-hidden="true" /> Internal notes — not shown to the citizen
+              </p>
+              <ul className="space-y-2">
+                {complaint.internalNotes.map((n, i) => (
+                  <li key={`${n.at}-${i}`} className="surface-2 rounded-xl p-3">
+                    <p className="text-[13px] text-content-2 leading-relaxed">{n.body}</p>
+                    <p className="text-[11px] text-content-3 mt-1.5">
+                      {n.authorName} · {new Date(n.at).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Workflow actions — server-provided */}
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">Actions</p>
@@ -176,7 +246,42 @@ export function ComplaintDrawer({
                     borderColor: 'var(--color-border-strong)',
                   }}
                 />
+                {/* Who will read this. The control is deliberately explicit
+                    and defaults to internal, because publishing an officer's
+                    working note to the complainant is not recoverable. */}
+                <div className="flex items-center gap-1 mb-3 surface-2 bordered rounded-xl p-1 w-fit"
+                     role="group" aria-label="Who can see this note">
+                  {([
+                    { key: 'internal' as const, label: 'Staff only', Icon: EyeOff },
+                    { key: 'public' as const, label: 'Visible to citizen', Icon: Eye },
+                  ]).map(o => (
+                    <button
+                      key={o.key}
+                      onClick={() => setNoteVisibility(o.key)}
+                      aria-pressed={noteVisibility === o.key}
+                      className="press px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors"
+                      style={{
+                        background: noteVisibility === o.key ? 'var(--color-cta)' : 'transparent',
+                        color: noteVisibility === o.key ? '#fff' : 'var(--color-content-3)',
+                      }}
+                    >
+                      <o.Icon size={11} aria-hidden="true" /> {o.label}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<MessageSquare size={14} />}
+                    disabled={!note.trim()}
+                    loading={savingNote}
+                    loadingText="Saving…"
+                    onClick={saveNote}
+                  >
+                    Save note only
+                  </Button>
                   {complaint.availableTransitions.map(t => (
                     <Button
                       key={t.to}
@@ -212,7 +317,7 @@ export function ComplaintDrawer({
                       borderColor: i === 0 ? 'var(--color-cta)' : 'var(--color-border-strong)',
                     }}
                   />
-                  <p className="text-sm font-bold text-content">{t.status}</p>
+                  <p className="text-sm font-bold text-content">{t.statusLabel ?? t.status}</p>
                   <p className="text-[12px] text-content-3">
                     {new Date(t.at).toLocaleString()} · {t.actorName}
                   </p>

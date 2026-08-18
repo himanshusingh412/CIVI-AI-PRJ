@@ -52,8 +52,10 @@ export type AdminComplaint = {
   slaDeadline: string;
   lat?: number;
   lng?: number;
-  timeline: { at: string; status: string; actorName: string; note?: string; isPublic: boolean }[];
+  timeline: { at: string; status: string; statusLabel: string; actorName: string; note?: string; isPublic: boolean }[];
   internalNotes: { at: string; authorName: string; body: string }[];
+  publicUpdates: { at: string; body: string }[];
+  attachments: { id: string; kind: string; filename: string; key: string; sizeBytes: number; uploadedAt: string }[];
   availableTransitions: Transition[];
 };
 
@@ -151,6 +153,18 @@ export const assignOfficer = (id: string, officerId: string, officerName: string
   adminFetch<{ ok: true; complaint: AdminComplaint }>(
     `/api/admin/complaints/${encodeURIComponent(id)}/assign`,
     { method: 'POST', body: JSON.stringify({ officerId, officerName }) },
+  );
+
+/**
+ * A note that is not a status change. `visibility` defaults to internal on
+ * the server too - the safe value is the one you get by saying nothing,
+ * because getting it backwards publishes an officer's private working note
+ * to the complainant.
+ */
+export const addNote = (id: string, body: string, visibility: 'internal' | 'public' = 'internal') =>
+  adminFetch<{ ok: true; complaint: AdminComplaint }>(
+    `/api/admin/complaints/${encodeURIComponent(id)}/note`,
+    { method: 'POST', body: JSON.stringify({ body, visibility }) },
   );
 
 export const fetchAnalytics = () => adminFetch<Analytics>('/api/admin/analytics');
