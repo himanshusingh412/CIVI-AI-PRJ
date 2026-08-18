@@ -14,6 +14,16 @@ import { LOCALES, localeOf } from '../i18n/locales';
  * Someone who cannot read the interface still needs to find their language
  * in it — that is the whole point of the control.
  */
+/**
+ * `compact` drops the language NAME below the `sm` breakpoint, leaving the
+ * globe icon alone. The prop existed before this change but was never
+ * referenced, so every caller silently got the wide variant — which is what
+ * pushed the assistant's mobile header into overflowing.
+ *
+ * The name is kept at `sm` and above rather than removed entirely: a globe
+ * icon by itself does not tell someone which language is currently active,
+ * and that is the one thing this control must communicate at a glance.
+ */
 export function LanguagePicker({ compact = false }: { compact?: boolean }) {
   const { lang, setLang, t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -42,11 +52,14 @@ export function LanguagePicker({ compact = false }: { compact?: boolean }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={t('lang.label')}
-        className="press flex items-center gap-2 h-10 px-3 rounded-xl bordered surface-2
-                   text-content-2 hover:text-cta transition-colors"
+        className={`press flex items-center gap-2 rounded-xl bordered surface-2
+                    text-content-2 hover:text-cta transition-colors
+                    ${compact ? 'h-9 px-2.5 sm:px-3' : 'h-10 px-3'}`}
       >
-        <Globe size={16} aria-hidden="true" />
-        <span className="text-[13px] font-bold">{current.native}</span>
+        <Globe size={16} aria-hidden="true" className="shrink-0" />
+        <span className={`text-[13px] font-bold ${compact ? 'hidden sm:inline' : ''}`}>
+          {current.native}
+        </span>
       </button>
 
       {open && (

@@ -45,6 +45,13 @@ const DepartmentPortalPage = lazy(() =>
   import('./portals/DepartmentPortalPage.tsx').then(m => ({ default: m.DepartmentPortalPage })));
 const OfficerPortalPage = lazy(() =>
   import('./portals/OfficerPortalPage.tsx').then(m => ({ default: m.OfficerPortalPage })));
+/**
+ * The assistant is lazy for a different reason than the staff portals: it is
+ * a full second application surface (its own layout, voice, conversation
+ * store), and most visits to /portal never open it.
+ */
+const AssistantPage = lazy(() =>
+  import('./pages/AssistantPage.tsx').then(m => ({ default: m.AssistantPage })));
 
 function CitizenPortal() {
   const { status } = useAuth();
@@ -78,6 +85,16 @@ createRoot(container).render(
                   <Route path="/staff" element={<SignInPage audience="staff" />} />
 
                   <Route path="/portal" element={<CitizenPortal />} />
+                  <Route
+                    path="/portal/assistant"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening the assistant…" />}>
+                          <AssistantPage />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
                   <Route
                     path="/portal/officer"
                     element={staffRoute('Loading officer workspace…', <OfficerPortalPage />)}

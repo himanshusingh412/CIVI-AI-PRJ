@@ -1,4 +1,4 @@
-import { MessageSquare, LayoutDashboard, Search, TrendingUp } from 'lucide-react';
+import { MessageSquare, LayoutDashboard, Search, TrendingUp, Sparkles } from 'lucide-react';
 import type { ViewType } from '../types';
 import { useT } from '../i18n/I18nContext';
 import type { StringKey } from '../i18n/strings';
@@ -12,6 +12,11 @@ import type { StringKey } from '../i18n/strings';
  * Follows the platform conventions: max 5 destinations, always icon + label
  * (never icon-only), current item marked with aria-current, 44px+ targets,
  * and safe-area padding so it clears the iOS home indicator.
+ *
+ * The Assistant is the one destination that is a ROUTE rather than a view,
+ * so it is passed in as a callback instead of joining ITEMS. Modelling it as
+ * a fake ViewType would have meant `view` could hold a value the parent
+ * cannot render.
  */
 
 // Labels are dictionary keys, not literals. This component previously
@@ -27,10 +32,13 @@ const ITEMS: { view: ViewType; key: StringKey; Icon: typeof MessageSquare }[] = 
 export function MobileNav({
   view,
   onNavigate,
+  onAssistant,
   pendingCount,
 }: {
   view: ViewType;
   onNavigate: (v: ViewType) => void;
+  /** Navigates to /portal/assistant. Omit to hide the tab. */
+  onAssistant?: () => void;
   pendingCount: number;
 }) {
   const t = useT();
@@ -44,7 +52,7 @@ export function MobileNav({
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
-      <ul className="grid grid-cols-4">
+      <ul className={onAssistant ? 'grid grid-cols-5' : 'grid grid-cols-4'}>
         {ITEMS.map(({ view: v, key, Icon }) => {
           const label = t(key);
           const active = view === v;
@@ -85,6 +93,20 @@ export function MobileNav({
             </li>
           );
         })}
+
+        {onAssistant && (
+          <li>
+            <button
+              onClick={onAssistant}
+              aria-label={t('nav.assistant')}
+              className="press relative w-full min-h-[56px] flex flex-col items-center justify-center gap-1 pt-2 pb-1.5"
+              style={{ color: 'var(--color-cta)' }}
+            >
+              <Sparkles size={21} aria-hidden="true" />
+              <span className="text-[11px] font-bold leading-none">{t('nav.assistant')}</span>
+            </button>
+          </li>
+        )}
       </ul>
     </nav>
   );
