@@ -6,16 +6,30 @@ import {
   isAuthError,
   type AuthUser,
 } from '../services/authService';
+import { fetchIdentity, type Identity } from '../services/identityService';
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
 type AuthContextValue = {
   status: AuthStatus;
   user: AuthUser | null;
+  /**
+   * Role, jurisdiction and home route — resolved by the server from the
+   * session's verified subject. Null while it is still being fetched, and
+   * for anonymous visitors.
+   *
+   * Deliberately separate from `user`: `user` is "the session exists",
+   * `identity` is "and this is what it is allowed to be". Merging them
+   * would make it easy to write `if (user)` and accidentally mean
+   * "is authorised".
+   */
+  identity: Identity | null;
+  identityLoading: boolean;
   /** Called by the login screen once the server has issued a session. */
   onSignedIn: (user: AuthUser) => void;
   signOut: () => Promise<void>;
   signingOut: boolean;
+  refreshIdentity: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,6 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
 
   // Guards against setState after unmount (React 18 StrictMode double-invokes effects).
   const mounted = useRef(true);
@@ -96,6 +112,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [status]);
 
+  const loadIdentity = useCallback(async (signal?: AbortSignal) => {
+    setIdentityLoading(true);
+    try {
+      const res = await fetchIdentity(signal);
+      if (!mounted.current) return;
+      setIdentity(isAuthError(res) ? null : res);
+    } finally {
+      if (mounted.current) setIdentityLoading(false);
+    }
+  }, []);
+
+  // ── Identity follows the session, never the other way round ──
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      setIdentity(null);
+      return;
+    }
+    const ac = new AbortController();
+    void loadIdentity(ac.signal);
+    return () => ac.abort();
+  }, [status, loadIdentity]);
+
   const onSignedIn = useCallback((next: AuthUser) => {
     setUser(next);
     setStatus('authenticated');
@@ -109,14 +147,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted.current) {
         setSigningOut(false);
         setUser(null);
+        setIdentity(null);
         setStatus('anonymous');
       }
     }
   }, []);
 
+  const refreshIdentity = useCallback(() => loadIdentity(), [loadIdentity]);
+
   const value = useMemo(
-    () => ({ status, user, onSignedIn, signOut, signingOut }),
-    [status, user, onSignedIn, signOut, signingOut],
+    () => ({
+      status, user, identity, identityLoading,
+      onSignedIn, signOut, signingOut, refreshIdentity,
+    }),
+    [status, user, identity, identityLoading, onSignedIn, signOut, signingOut, refreshIdentity],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

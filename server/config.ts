@@ -29,6 +29,8 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 
+import { storeStatus } from './store.js';
+
 export type IntegrationMode = 'live' | 'demo' | 'config_required' | 'disabled';
 
 export type IntegrationKey =
@@ -112,6 +114,9 @@ const hasAny = (...names: string[]) => names.some(n => !!(process.env[n] || '').
 
 export function integrations(): IntegrationStatus[] {
   const f = flags();
+  // Imported lazily-ish at call time (not module load) so this file stays
+  // free of import-order hazards on serverless cold starts.
+  const dbBackend = storeStatus().backend;
 
   // ── AI ──
   const aiConfigured = hasAny('AI_API_KEY', 'ANTHROPIC_API_KEY', 'AWS_BEARER_TOKEN_BEDROCK');
@@ -175,11 +180,20 @@ export function integrations(): IntegrationStatus[] {
       // Postgres has no meaningful "demo" mode — the in-memory store is a
       // real fallback with real (bad) consequences, so it is never dressed
       // up as a working integration.
-      mode: has('DATABASE_URL') ? 'live' : 'config_required',
-      provider: has('DATABASE_URL') ? 'postgres' : 'in-memory',
-      detail: has('DATABASE_URL')
-        ? 'Durable Postgres storage.'
-        : 'In-memory store: data is lost on restart and is not shared across instances. Set DATABASE_URL.',
+      //
+      // Reported from the store's ACTUAL backend, not from the presence of
+      // DATABASE_URL. A connection string that is set but unreachable is the
+      // single most misleading state this system can be in: the operator
+      // believes their data is durable while every write is going to a Map
+      // that dies with the process.
+      mode: dbBackend === 'postgres' ? 'live' : 'config_required',
+      provider: dbBackend,
+      detail:
+        dbBackend === 'postgres'
+          ? 'Durable Postgres storage.'
+          : has('DATABASE_URL')
+            ? 'DATABASE_URL is set but the database is not reachable — running on the in-memory store. Data is lost on restart.'
+            : 'In-memory store: data is lost on restart and is not shared across instances. Set DATABASE_URL.',
     },
     {
       key: 'google_oauth',

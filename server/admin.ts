@@ -9,7 +9,8 @@ import {
   isTerminal, type Status,
 } from './workflow.js';
 import { store, storeStatus, type Complaint } from './store.js';
-import { getSession, sessionMatchesEmail, sessionMatchesPhone } from './auth.js';
+import { getSession } from './auth.js';
+import { resolveStaff, toPrincipal, homeRouteFor } from './staff.js';
 import { tokenFromRequest, safeError } from './security.js';
 import { ipOf } from './rateLimit.js';
 
@@ -33,62 +34,32 @@ const MUTATING_PERMISSIONS: Permission[] = [
 ];
 
 /**
- * Demo principal directory.
- *
- * NOTE: role assignment is keyed off the signed-in session identity. In
- * production this belongs in the users table with an admin-managed mapping;
- * hard-coding it here keeps the RBAC layer demonstrable without inventing a
- * half-built user-management system that would look more finished than it is.
- */
-const DEMO_PRINCIPALS: Record<string, Omit<Principal, 'id'>> = {
-  'super':    { role: 'super_admin',        scope: {},                                                  displayName: 'Super Admin' },
-  'state':    { role: 'state_admin',        scope: { state: 'Delhi' },                                  displayName: 'Delhi State Admin' },
-  'district': { role: 'district_admin',     scope: { state: 'Delhi', district: 'New Delhi' },           displayName: 'New Delhi District Admin' },
-  'dept':     { role: 'department_officer', scope: { state: 'Delhi', department: 'Water Department' },  displayName: 'Water Dept Officer' },
-  'field':    { role: 'field_officer',      scope: { officerId: 'off-1' },                              displayName: 'Field Officer (off-1)' },
-  'auditor':  { role: 'auditor',            scope: {},                                                  displayName: 'Read-only Auditor' },
-};
-
-/**
  * Resolves the caller's principal.
  *
- * The `x-demo-role` header is honoured ONLY outside production, so the RBAC
- * matrix can be exercised without six real accounts. In production the role
- * must come from the session, and an unmapped session gets no admin access
- * at all (deny by default).
+ * All of the "who is this person" logic now lives in server/staff.ts, which
+ * answers from the users/roles tables (or a configured directory) keyed on
+ * the session's subject hash. Two things deliberately disappeared here:
+ *
+ *   - The DEMO_PRINCIPALS object. Role is data now, not a constant.
+ *   - The `x-demo-role` header. It was gated to non-production, but a
+ *     request header that changes your role is the exact shape of the bug
+ *     this system must never have — and its existence made every reading of
+ *     this file start with "except in development". Demo accounts are real
+ *     sign-ins now (see DEMO_STAFF), so nothing is lost.
+ *
+ * Returns null for citizens and unknown sessions alike: deny by default.
  */
-function principalFrom(req: express.Request): Principal | null {
+async function principalFrom(req: express.Request): Promise<Principal | null> {
   const session = getSession(tokenFromRequest(req));
   if (!session) return null;
 
-  const isProd = process.env.NODE_ENV === 'production';
-  if (!isProd) {
-    const demo = String(req.headers['x-demo-role'] || '').toLowerCase();
-    if (demo && DEMO_PRINCIPALS[demo]) {
-      return { id: `demo-${demo}`, ...DEMO_PRINCIPALS[demo] };
-    }
-  }
-
-  // Match on the session's subject hash, not the displayed identifier —
-  // that value is masked ("hi•••@gmail.com") and could never equal a real
-  // address, which silently disabled SUPER_ADMIN_EMAIL entirely.
-  // Two doors to the same identity: Google gives an email, SMS OTP gives a
-  // number. Either configured value grants super_admin, so switching the OTP
-  // channel to SMS cannot lock the operator out.
-  const superEmail = process.env.SUPER_ADMIN_EMAIL || '';
-  const superPhone = process.env.SUPER_ADMIN_PHONE || '';
-  const isSuper =
-    (superEmail && sessionMatchesEmail(session.subjectHash, superEmail)) ||
-    (superPhone && sessionMatchesPhone(session.subjectHash, superPhone));
-  const mapped = isSuper ? DEMO_PRINCIPALS.super : null;
-
-  if (!mapped) return null; // deny by default
-  return { id: session.identifier, ...mapped };
+  const staff = await resolveStaff(session.subjectHash);
+  return staff ? toPrincipal(staff) : null;
 }
 
 function requirePermission(permission: Parameters<typeof authorize>[1]) {
-  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const principal = principalFrom(req);
+  return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const principal = await principalFrom(req);
     if (!principal) {
       return res.status(403).json({ error: 'forbidden', message: 'You do not have admin access.' });
     }
@@ -127,13 +98,14 @@ function project(c: Complaint, p: Principal) {
 }
 
 // ───────────────────────── who am I ─────────────────────────
-adminRouter.get('/me', (req, res) => {
-  const p = principalFrom(req);
+adminRouter.get('/me', async (req, res) => {
+  const p = await principalFrom(req);
   if (!p) return res.status(403).json({ error: 'forbidden', message: 'No admin access.' });
   res.json({
     ok: true,
     principal: { id: p.id, role: p.role, scope: p.scope, displayName: p.displayName },
     permissions: permissionsFor(p.role),
+    homeRoute: homeRouteFor(p.role),
     roles: ROLES,
     store: storeStatus(),
   });

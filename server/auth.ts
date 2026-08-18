@@ -24,7 +24,16 @@ export const GENERIC_OTP_SENT =
   'If an account can be created or found for that address, a 6-digit code has been sent.';
 const GENERIC_BAD_CODE = 'That code is invalid or has expired. Please request a new one.';
 
-export type Channel = 'email' | 'google';
+/**
+ * How the identity was proven.
+ *
+ * This used to be 'email' | 'google' while the OTP channel had already been
+ * switched to SMS, so every phone sign-in reported itself as "email" — a
+ * value the client's own AuthUser type could not even represent. The label
+ * is shown to the person who just signed in, so getting it wrong is a small
+ * lie told at the most trust-sensitive moment in the product.
+ */
+export type Channel = 'phone' | 'google';
 
 // ───────────────────────── stores ─────────────────────────
 type OtpRecord = {
@@ -229,7 +238,7 @@ export function verifyOtp(rawIdentifier: string, otp: string): VerifyOtpResult {
   // success — burn the OTP, issue a session
   const display = rec.display;
   otpStore.delete(key);
-  return { ok: true, ...issueSession(display, 'email', key) };
+  return { ok: true, ...issueSession(display, 'phone', key) };
 }
 
 // ───────────────────────── sessions (stateless) ─────────────────────────

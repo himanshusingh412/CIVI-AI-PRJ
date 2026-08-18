@@ -26,6 +26,7 @@
   "exclude": [
     "node_modules",
     "dist",
+    "_to_delete",
     "civicai---jansunwai-portal-2.0"
   ]
 }

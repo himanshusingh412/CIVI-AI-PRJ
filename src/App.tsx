@@ -783,8 +783,14 @@ export default function App() {
     showToast("Exporting CSV...");
   };
 
+  /**
+   * Belt and braces. /portal is wrapped in RequireAuth, so an anonymous
+   * visitor is redirected before this component mounts — but a session that
+   * expires while the tab is open lands here, and showing the sign-in form
+   * in place is better than a blank dashboard.
+   */
   if (status !== 'authenticated') {
-    return <LoginScreen onSignedIn={handleSignedIn} />;
+    return <LoginScreen onSignedIn={handleSignedIn} audience="citizen" />;
   }
 
   return (

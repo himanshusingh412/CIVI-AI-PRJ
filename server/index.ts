@@ -45,6 +45,8 @@ import { complaintsRouter } from './complaints.js';
 import { smsStatus } from './sms.js';
 import { seedDemoData, storeStatus, initStore, store } from './store.js';
 import { publicConfig, integrations, flags } from './config.js';
+import { resolveStaff, homeRouteFor, staffDirectoryStatus } from './staff.js';
+import { permissionsFor } from './rbac.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -250,6 +252,58 @@ app.post('/api/auth/logout', (req, res) => {
   clearSessionCookies(res);
   // Always 200 — logging out must be idempotent and never leak session state.
   res.json({ ok: true });
+});
+
+/**
+ * Who am I, and where do I belong?
+ *
+ * One endpoint the client can always call, for citizens and staff alike.
+ * It exists so the browser never has to DECIDE its own role: after sign-in
+ * the app asks the server where to go and follows the answer.
+ *
+ * A tampered client can of course navigate anywhere it likes. That is fine,
+ * and is the reason this returns a *route* rather than a capability — every
+ * one of those routes then fetches data through endpoints that re-check
+ * authorisation server-side. Routing is convenience; authorisation is
+ * enforcement. Conflating the two is how role-based UIs become role-based
+ * vulnerabilities.
+ */
+app.get('/api/me', requireAuth, async (req, res) => {
+  try {
+    const s = (req as any).session;
+    const staff = await resolveStaff(s.subjectHash);
+
+    if (!staff) {
+      return res.json({
+        ok: true,
+        identifier: s.identifier,
+        channel: s.channel,
+        isStaff: false,
+        role: 'citizen',
+        displayName: s.identifier,
+        homeRoute: homeRouteFor('citizen'),
+        permissions: [],
+        scope: {},
+      });
+    }
+
+    return res.json({
+      ok: true,
+      identifier: s.identifier,
+      channel: s.channel,
+      isStaff: true,
+      role: staff.role,
+      displayName: staff.displayName,
+      homeRoute: homeRouteFor(staff.role),
+      permissions: permissionsFor(staff.role),
+      scope: staff.scope,
+      // How the grant was obtained. Useful when an operator is staring at a
+      // portal wondering why they are (or are not) an admin.
+      grantSource: staff.source,
+    });
+  } catch (err) {
+    return safeError(res, err);
+  }
 });
 
 app.get('/api/auth/session', requireAuth, (req, res) => {
@@ -463,6 +517,7 @@ app.get('/api/health', (_req, res) =>
     },
     features: flags(),
     integrations: integrations(),
+    staffDirectory: staffDirectoryStatus(),
   }),
 );
 

@@ -13,20 +13,9 @@ import { Skeleton, StatCardSkeleton, SkeletonRegion } from '../Skeleton';
 import { ComplaintDrawer } from './ComplaintDrawer';
 import { useThemeTokens } from '../../hooks/useThemeTokens';
 import {
-  fetchMe, fetchComplaints, fetchAnalytics, fetchAudit, setDemoRole, getDemoRole,
+  fetchMe, fetchComplaints, fetchAnalytics, fetchAudit,
   isAuthError, type AdminComplaint, type Analytics, type AuditEntry, type MeResponse,
 } from '../../services/adminService';
-
-const isDev = !!(import.meta as any).env?.DEV;
-
-const DEMO_ROLES = [
-  { key: 'super', label: 'Super Admin' },
-  { key: 'state', label: 'State Admin' },
-  { key: 'district', label: 'District Admin' },
-  { key: 'dept', label: 'Dept Officer' },
-  { key: 'field', label: 'Field Officer' },
-  { key: 'auditor', label: 'Auditor' },
-];
 
 type Tab = 'overview' | 'complaints' | 'audit';
 
@@ -40,7 +29,6 @@ export function AdminPortal() {
   const [selected, setSelected] = useState<AdminComplaint | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [role, setRole] = useState<string | null>(getDemoRole());
 
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
@@ -72,12 +60,6 @@ export function AdminPortal() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const switchRole = (r: string | null) => {
-    setDemoRole(r);
-    setRole(r);
-    setSelected(null);
-  };
-
   const toSeries = (rec: Record<string, number> | undefined) =>
     Object.entries(rec ?? {}).map(([name, value]) => ({ name, value }));
 
@@ -92,18 +74,11 @@ export function AdminPortal() {
           <ShieldAlert size={40} className="mx-auto mb-4" style={{ color: 'var(--color-danger)' }} aria-hidden="true" />
           <h2 className="font-display font-bold text-lg text-content">Admin access required</h2>
           <p className="text-sm text-content-3 mt-2">{error}</p>
-          {isDev && (
-            <div className="mt-5">
-              <p className="text-[12px] text-content-3 mb-2">Dev: preview a role</p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {DEMO_ROLES.map(r => (
-                  <Button key={r.key} size="sm" variant="secondary" onClick={() => { switchRole(r.key); void load(); }}>
-                    {r.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-[12px] text-content-3 mt-4 leading-relaxed">
+            Roles are granted to accounts, not chosen in the browser. Sign in
+            with a staff account, or see the demo accounts listed in the
+            project README.
+          </p>
         </div>
       </div>
     );
@@ -140,24 +115,6 @@ export function AdminPortal() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {isDev && (
-            <div className="flex items-center gap-1 surface-2 bordered rounded-xl p-1" role="group" aria-label="Preview role">
-              {DEMO_ROLES.map(r => (
-                <button
-                  key={r.key}
-                  onClick={() => switchRole(r.key)}
-                  aria-pressed={role === r.key}
-                  className="press px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors"
-                  style={{
-                    background: role === r.key ? 'var(--color-cta)' : 'transparent',
-                    color: role === r.key ? '#fff' : 'var(--color-content-3)',
-                  }}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          )}
           <Button size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={() => load()}>
             Refresh
           </Button>
@@ -316,7 +273,7 @@ export function AdminPortal() {
                           <td colSpan={7} className="px-4 py-14 text-center">
                             <p className="font-semibold text-content">No complaints in your scope</p>
                             <p className="text-[13px] text-content-3 mt-1">
-                              Your role only sees records inside its jurisdiction. Try a different role or clear the filters.
+                              Your role only sees records inside its jurisdiction. Clearing the filters may reveal more.
                             </p>
                           </td>
                         </tr>
