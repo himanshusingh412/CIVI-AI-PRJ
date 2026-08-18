@@ -12,6 +12,7 @@ const AdminPortalPage = lazy(() =>
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { ThemeProvider } from './context/ThemeContext.tsx';
 import { I18nProvider } from './i18n/I18nContext.tsx';
+import { ConfigProvider } from './context/ConfigContext.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { SplashGate } from './components/SplashGate.tsx';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
@@ -44,6 +45,7 @@ createRoot(container).render(
     <ErrorBoundary scope="root">
       <ThemeProvider>
         <I18nProvider>
+        <ConfigProvider>
         <AuthProvider>
           <BrowserRouter>
             <Routes>
@@ -61,6 +63,7 @@ createRoot(container).render(
             </Routes>
           </BrowserRouter>
         </AuthProvider>
+        </ConfigProvider>
         </I18nProvider>
       </ThemeProvider>
     </ErrorBoundary>

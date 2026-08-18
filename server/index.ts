@@ -44,6 +44,7 @@ import { mediaRouter, serveMedia } from './media.js';
 import { complaintsRouter } from './complaints.js';
 import { smsStatus } from './sms.js';
 import { seedDemoData, storeStatus, initStore, store } from './store.js';
+import { publicConfig, integrations, flags } from './config.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -373,10 +374,13 @@ app.post('/api/response-templates', requireAuth, aiLimiter, async (req, res) => 
  */
 app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({
-    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
-    emailOtpEnabled: true,
-  });
+  /**
+   * Single source of truth for what the browser is allowed to believe about
+   * this deployment. Every LIVE / DEMO / CONFIGURATION REQUIRED badge in the
+   * UI is derived from this payload — no component asserts its own status.
+   * See server/config.ts for why that rule exists.
+   */
+  res.json(publicConfig());
 });
 
 // ───────────────────────── citizen complaints ─────────────────────────
@@ -457,6 +461,8 @@ app.get('/api/health', (_req, res) =>
       databaseUrl: !!process.env.DATABASE_URL,
       googleClientId: !!process.env.GOOGLE_CLIENT_ID,
     },
+    features: flags(),
+    integrations: integrations(),
   }),
 );
 
