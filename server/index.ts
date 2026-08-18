@@ -42,6 +42,8 @@ import { scoreDuplicates, classify } from './duplicates.js';
 import { runSlaSweep, startSlaScheduler } from './sla.js';
 import { mediaRouter, serveMedia } from './media.js';
 import { complaintsRouter } from './complaints.js';
+import { documentsRouter, documentVerificationStatus } from './documents.js';
+import { digilockerRouter } from './digilockerRoutes.js';
 import { smsStatus } from './sms.js';
 import { seedDemoData, storeStatus, initStore, store } from './store.js';
 import { publicConfig, integrations, flags } from './config.js';
@@ -449,6 +451,17 @@ app.use('/api/complaints', requireAuth, complaintsRouter);
 app.use('/api/media', requireAuth, mediaRouter);
 app.get('/api/media/:id', requireAuth, serveMedia);
 
+// ───────────────────────── document verification ─────────────────────────
+/**
+ * Both routers sit behind requireAuth. Uploaded identity documents are the
+ * most sensitive payload this API handles, so there is no anonymous path to
+ * any of it — including the DigiLocker consent screen, which would otherwise
+ * be an unauthenticated page on a government domain that asks people to
+ * approve sharing their documents.
+ */
+app.use('/api/documents', requireAuth, documentsRouter);
+app.use('/api/digilocker', requireAuth, digilockerRouter);
+
 // ───────────────────────── real-time ─────────────────────────
 /**
  * SSE stream. requireAuth so an anonymous client cannot learn that activity
@@ -518,6 +531,7 @@ app.get('/api/health', (_req, res) =>
     features: flags(),
     integrations: integrations(),
     staffDirectory: staffDirectoryStatus(),
+    documentVerification: documentVerificationStatus(),
   }),
 );
 

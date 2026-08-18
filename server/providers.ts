@@ -216,4 +216,108 @@ export async function generateJson<T>(opts: {
   return { data: opts.fallback, provider: 'fallback', degraded: true };
 }
 
+// ───────────────────────── vision ─────────────────────────
+
+/**
+ * Image understanding, for reading a document.
+ *
+ * Kept separate from generateJson rather than bolted on as an optional
+ * parameter, because the two have genuinely different failure modes and
+ * different fallbacks: a text call can degrade to a canned response, while a
+ * vision call that cannot see the image has nothing useful to say and must
+ * report that plainly (see server/ocr.ts, which turns this failure into an
+ * explicit "could not read" rather than empty fields).
+ *
+ * Bedrock is skipped here. Converse does support images, but its payload
+ * shape differs enough to be a second thing to get wrong, and Gemini plus
+ * Claude already give one primary and one fallback.
+ */
+export type VisionInput = {
+  /** Raw image bytes. */
+  data: Buffer;
+  /** e.g. image/jpeg, image/png, application/pdf */
+  mimeType: string;
+};
+
+export async function generateJsonFromImage<T>(opts: {
+  system: string;
+  prompt: string;
+  images: VisionInput[];
+  schema: any;
+  jsonHint: string;
+  maxOutputTokens?: number;
+}): Promise<AiResult<T>> {
+  const maxTokens = opts.maxOutputTokens ?? Math.max(LIMITS.MAX_OUTPUT_TOKENS, 1200);
+
+  if (gemini) {
+    try {
+      const response = await gemini.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{
+          role: 'user',
+          parts: [
+            ...opts.images.map(img => ({
+              inlineData: { mimeType: img.mimeType, data: img.data.toString('base64') },
+            })),
+            { text: opts.prompt },
+          ],
+        }],
+        config: {
+          systemInstruction: opts.system,
+          responseMimeType: 'application/json',
+          responseSchema: opts.schema,
+          maxOutputTokens: maxTokens,
+          // Extraction is a transcription task, not a creative one. Any
+          // temperature above zero is the model being invited to improvise a
+          // date it could not quite read.
+          temperature: 0,
+        },
+      });
+      return { data: JSON.parse(response.text || '{}') as T, provider: 'gemini', degraded: false };
+    } catch (err: any) {
+      console.warn(`[ai] gemini vision failed (${err?.message}) — trying Claude`);
+    }
+  }
+
+  if (CLAUDE_KEY) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': CLAUDE_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: CLAUDE_MODEL,
+          max_tokens: maxTokens,
+          system: opts.system,
+          temperature: 0,
+          messages: [{
+            role: 'user',
+            content: [
+              ...opts.images.map(img => ({
+                type: 'image',
+                source: { type: 'base64', media_type: img.mimeType, data: img.data.toString('base64') },
+              })),
+              { type: 'text', text: `${opts.prompt}\n\nRespond with ONLY valid JSON matching: ${opts.jsonHint}` },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(LIMITS.REQUEST_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`claude_vision_${res.status}`);
+      const body: any = await res.json();
+      const text: string = body?.content?.map((c: any) => c?.text ?? '').join('') ?? '{}';
+      return { data: extractJson<T>(text), provider: 'claude', degraded: false };
+    } catch (err: any) {
+      console.warn(`[ai] claude vision failed (${err?.message})`);
+    }
+  }
+
+  // No provider could see the image. The caller MUST NOT treat this as
+  // "the document had no fields" — see ocr.ts.
+  throw new Error('vision_unavailable');
+}
+
 export { Type };

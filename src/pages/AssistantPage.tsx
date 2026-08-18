@@ -762,15 +762,15 @@ export function AssistantPage() {
             </div>
 
             <Link
-              to="/portal"
+              to="/portal/documents"
               className="press flex items-center gap-2.5 rounded-xl p-3 bordered surface
                          hover:border-[var(--color-cta)] transition-colors"
             >
               <FileSearch size={16} style={{ color: 'var(--color-saffron)' }} aria-hidden="true" />
               <span className="min-w-0">
-                <span className="block text-[12.5px] font-bold text-content">Your complaints</span>
+                <span className="block text-[12.5px] font-bold text-content">Check my documents</span>
                 <span className="block text-[11px] text-content-3 leading-snug">
-                  Track everything you have filed
+                  Find mismatches before you apply
                 </span>
               </span>
             </Link>
