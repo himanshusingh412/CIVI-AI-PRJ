@@ -36,6 +36,7 @@ import {
   Gauge,
   Sparkles as SparklesIcon,
   FileSearch as FileSearchIcon,
+  ClipboardList as ClipboardListIcon,
 } from 'lucide-react';
 import {
   BarChart,
@@ -977,6 +978,11 @@ export default function App() {
           aria-label="Main navigation"
         >
           <div className="px-5 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">Main Menu</div>
+          <SidebarItem
+            onClick={() => navigate('/portal/report')}
+            icon={<ClipboardListIcon size={18} />}
+            label={t('nav.fileComplaint')}
+          />
           <SidebarItem
             onClick={() => navigate('/portal/assistant')}
             icon={<SparklesIcon size={18} />}

@@ -54,6 +54,8 @@ const AssistantPage = lazy(() =>
   import('./pages/AssistantPage.tsx').then(m => ({ default: m.AssistantPage })));
 const DocumentVerificationPage = lazy(() =>
   import('./pages/DocumentVerificationPage.tsx').then(m => ({ default: m.DocumentVerificationPage })));
+const ReportWizardPage = lazy(() =>
+  import('./pages/ReportWizardPage.tsx').then(m => ({ default: m.ReportWizardPage })));
 
 function CitizenPortal() {
   const { status } = useAuth();
@@ -93,6 +95,16 @@ createRoot(container).render(
                       <RequireAuth>
                         <Suspense fallback={<LoadingScreen label="Opening the assistant…" />}>
                           <AssistantPage />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/portal/report"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening the complaint form…" />}>
+                          <ReportWizardPage />
                         </Suspense>
                       </RequireAuth>
                     }

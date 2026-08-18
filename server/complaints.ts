@@ -2,6 +2,8 @@ import express from 'express';
 import { store, type Complaint } from './store.js';
 import { publish } from './events.js';
 import { scoreDuplicates, classify } from './duplicates.js';
+import { generateJson, Type } from './providers.js';
+import { clampText } from './limits.js';
 
 /**
  * Citizen-facing complaint API.
@@ -139,4 +141,121 @@ complaintsRouter.post('/:id/feedback', async (req, res) => {
 
   publish({ type: 'complaint_updated', id: req.params.id, status: String(updated.status) });
   res.json(toPublic(updated));
+});
+
+
+// ───────────────────────── pre-submission review ─────────────────────────
+
+/**
+ * Categories the wizard offers. Kept here rather than in the client so the
+ * server is the authority on what a valid category is — a category invented
+ * in the browser would route a complaint to a department that does not exist.
+ */
+export const WIZARD_CATEGORIES = [
+  'Road & Infrastructure', 'Water Supply', 'Electricity', 'Sanitation',
+  'Law & Order', 'Public Transport', 'Parks & Recreation', 'Street Lighting',
+  'Waste Management', 'General',
+] as const;
+
+const REVIEW_SYSTEM = `You review a citizen's draft civic complaint before it is filed in India.
+
+Your job is to make this complaint ACTIONABLE for the officer who receives it, and to do that while asking as little as possible of the person writing it.
+
+Rules:
+- Ask only for information an officer genuinely needs to act on THIS category. A pothole needs a landmark and whether traffic is affected; a power cut does not.
+- Never ask for something the draft already contains. Read it properly first.
+- Ask at most three questions. Somebody reporting a burst water main should not face a form.
+- "summary" is one or two sentences, written for the officer, in English, in the third person. Do not editorialise or add urgency the citizen did not express.
+- Never invent facts, departments, timelines or scheme names.
+- If the draft is already sufficient, return an empty "missingInfo" and say so in "verdict".`;
+
+const REVIEW_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    summary: { type: Type.STRING },
+    verdict: { type: Type.STRING, enum: ['ready', 'needs_detail'] },
+    missingInfo: { type: Type.ARRAY, items: { type: Type.STRING } },
+    suggestedCategory: { type: Type.STRING, enum: [...WIZARD_CATEGORIES] },
+    suggestedPriority: { type: Type.STRING, enum: ['Low', 'Medium', 'High', 'Critical'] },
+    priorityReason: { type: Type.STRING },
+  },
+  required: ['summary', 'verdict', 'missingInfo', 'suggestedCategory', 'suggestedPriority'],
+};
+
+/**
+ * POST /api/complaints/review
+ *
+ * Advisory only, and that is the whole design. It returns questions the
+ * citizen MAY answer and a category they MAY accept; nothing here blocks
+ * submission. A pre-submission check that can refuse to let someone file
+ * their complaint is a gate, and a gate on a grievance system is the
+ * problem it exists to solve.
+ */
+complaintsRouter.post('/review', async (req, res) => {
+  const description = clampText(req.body?.description, 4000);
+  const category = clampText(req.body?.category ?? '', 60);
+  const location = clampText(req.body?.location ?? '', 200);
+  const urgency = clampText(req.body?.urgency ?? '', 20);
+  const hasEvidence = !!req.body?.hasEvidence;
+
+  /**
+   * Used when no model answers. It is deterministic and deliberately modest:
+   * it checks only what the server can check for itself, so it never invents
+   * a question, and it never claims a draft is fine when a required field is
+   * simply absent.
+   */
+  const fallbackMissing: string[] = [];
+  if (description.length < 25) fallbackMissing.push('A little more detail about the problem');
+  if (!location) fallbackMissing.push('Where the problem is — a street, sector or landmark');
+  if (!hasEvidence) fallbackMissing.push('A photo, if you can safely take one');
+
+  const fallback = {
+    summary: description.slice(0, 240),
+    verdict: fallbackMissing.length ? ('needs_detail' as const) : ('ready' as const),
+    missingInfo: fallbackMissing,
+    suggestedCategory: (WIZARD_CATEGORIES as readonly string[]).includes(category) ? category : 'General',
+    suggestedPriority: urgency || 'Medium',
+    priorityReason: '',
+  };
+
+  if (!description) {
+    return res.json({ ...fallback, degraded: false, provider: 'none' });
+  }
+
+  try {
+    const result = await generateJson<typeof fallback>({
+      system: REVIEW_SYSTEM,
+      prompt:
+        `Draft complaint:\n` +
+        `Category the citizen chose: ${category || 'not chosen'}\n` +
+        `Urgency the citizen chose: ${urgency || 'not chosen'}\n` +
+        `Location given: ${location || 'none'}\n` +
+        `Photo attached: ${hasEvidence ? 'yes' : 'no'}\n` +
+        `Description: "${description}"`,
+      schema: REVIEW_SCHEMA,
+      jsonHint:
+        '{"summary":string,"verdict":"ready"|"needs_detail","missingInfo":string[],' +
+        '"suggestedCategory":string,"suggestedPriority":string,"priorityReason":string}',
+      fallback,
+    });
+
+    const d = { ...fallback, ...result.data };
+    // Never trust the model on enum drift — a category outside the list would
+    // route to a department that does not exist.
+    if (!(WIZARD_CATEGORIES as readonly string[]).includes(d.suggestedCategory)) {
+      d.suggestedCategory = fallback.suggestedCategory;
+    }
+    if (!['Low', 'Medium', 'High', 'Critical'].includes(d.suggestedPriority)) {
+      d.suggestedPriority = 'Medium';
+    }
+    res.json({
+      ...d,
+      missingInfo: (Array.isArray(d.missingInfo) ? d.missingInfo : []).slice(0, 3).map(x => String(x).slice(0, 160)),
+      summary: String(d.summary ?? '').slice(0, 600),
+      provider: result.provider,
+      degraded: result.degraded,
+    });
+  } catch {
+    res.json({ ...fallback, provider: 'fallback', degraded: true });
+  }
 });
