@@ -204,7 +204,8 @@ export function OfficerWorkspace() {
             id="queue-search" value={q} onChange={e => setQ(e.target.value)}
             placeholder="Reference, category, area…"
             className="w-full h-10 pl-9 pr-3 rounded-xl text-[13px] bordered surface text-content
-                       placeholder:text-[var(--color-content-3)] focus:outline-none focus:border-[var(--color-cta)]"
+                       placeholder:text-[var(--color-content-3)] focus:outline-none focus:border-[var(--color-cta)]
+                       focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-cta)_18%,transparent)]"
           />
         </div>
       </div>

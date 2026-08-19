@@ -600,6 +600,7 @@ export function AssistantPage() {
                   className="flex-1 resize-none rounded-xl px-3.5 py-3 text-[14px] bordered
                              surface-2 text-content placeholder:text-[var(--color-content-3)]
                              focus:outline-none focus:border-[var(--color-cta)] max-h-40
+                             focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-cta)_18%,transparent)]
                              overflow-hidden"
                   style={{ minHeight: '46px' }}
                 />

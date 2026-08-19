@@ -228,6 +228,7 @@ export function DocumentVerificationPage() {
               <input
                 ref={fileRef} type="file" accept={ACCEPT} multiple className="sr-only"
                 id="doc-file-input"
+                aria-label="Upload a document (JPG, PNG or PDF, up to 8 MB)"
                 onChange={e => { handleFiles(e.target.files); e.target.value = ''; }}
               />
               <Button

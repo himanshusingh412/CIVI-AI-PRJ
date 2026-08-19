@@ -65,7 +65,7 @@ export function RequireRole({
               </>
             )}
           </span>
-          <Link to="/portal" className="underline underline-offset-2 shrink-0">
+          <Link to="/portal" className="underline underline-offset-2 shrink-0 py-1.5 -my-1.5">
             Citizen view
           </Link>
         </div>
