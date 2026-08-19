@@ -24,6 +24,8 @@ perf-build/
 final-build/
 loading-build*/
 _to_delete-loading-build.tgz
+_to_delete-firebase-sync.tgz
+*.bundle
 
 # Leftover scratch file from the audit (sandbox could not delete it).
 src/__eb_test.tsx
