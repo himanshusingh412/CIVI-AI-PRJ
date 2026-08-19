@@ -25,16 +25,19 @@ export function SplashGate({ loading, children }: { loading: boolean; children: 
     const elapsed = Date.now() - mountedAt;
     const wait = Math.max(0, MIN_VISIBLE_MS - elapsed);
 
+    // setTimeout returns a plain number in the browser (unlike Node's
+    // Timeout object), so the finish timer has to live in its own closure
+    // variable rather than as a property stashed on startExit's return value
+    // - assigning a property to a primitive number throws in strict mode.
+    let finishTimer: ReturnType<typeof setTimeout> | undefined;
     const startExit = setTimeout(() => {
       setPhase('exiting');
-      const finish = setTimeout(() => setPhase('done'), EXIT_MS);
-      // Stored on the timeout itself so the outer cleanup can reach it.
-      (startExit as any)._finish = finish;
+      finishTimer = setTimeout(() => setPhase('done'), EXIT_MS);
     }, wait);
 
     return () => {
       clearTimeout(startExit);
-      if ((startExit as any)._finish) clearTimeout((startExit as any)._finish);
+      if (finishTimer) clearTimeout(finishTimer);
     };
   }, [loading, phase, mountedAt]);
 

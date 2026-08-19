@@ -66,14 +66,36 @@ const NotificationSettingsPage = lazy(() =>
 
 function CitizenPortal() {
   const { status } = useAuth();
+  // SplashGate has to be the OUTER boundary here, not RequireAuth. RequireAuth
+  // has its own early-return LoadingScreen for status === "loading" (used by
+  // every other authenticated route, which has no splash of its own) - if it
+  // sat outside SplashGate, it would already have resolved past "loading" by
+  // the render where SplashGate first mounts, so SplashGate would initialise
+  // straight into its "done" phase and its boot sequence would never show.
+  // Mounting SplashGate first means it sees loading=true on its very first
+  // render, the same render RequireAuth is still refusing to reveal anything -
+  // exactly the window the splash exists to cover.
   return (
-    <RequireAuth>
-      <SplashGate loading={status === 'loading'}>
-        <Suspense fallback={<LoadingScreen label="Loading your dashboard…" />}>
+    <SplashGate loading={status === 'loading'}>
+      <RequireAuth>
+        {/*
+         * Not <LoadingScreen> here. SplashGate above is already a full-screen
+         * fixed overlay that stays mounted and visible for a minimum of
+         * 900ms plus a 720ms fade-out (see SplashGate.tsx) - comfortably
+         * longer than this chunk takes to download on any real connection.
+         * A second full LoadingScreen as this Suspense fallback would mount
+         * underneath that overlay for the entire exit window, and because
+         * this one renders in normal document flow at the same top-of-
+         * viewport position the fixed splash occupies, the two visibly
+         * double-expose - two "CivicAI" wordmarks and two status lines
+         * overlapping mid-transition. This plain background-matched div just
+         * avoids a flash of white if the chunk is ever unusually slow.
+         */}
+        <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--color-bg-main)' }} />}>
           <App />
         </Suspense>
-      </SplashGate>
-    </RequireAuth>
+      </RequireAuth>
+    </SplashGate>
   );
 }
 

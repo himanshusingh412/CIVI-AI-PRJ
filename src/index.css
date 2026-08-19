@@ -603,6 +603,29 @@ button, a, [role="button"], label, input, select, textarea {
   50%      { transform: scaleX(0.78); opacity: 0.32; }
 }
 
+/* Soft pulsing halo behind the cube - the "glowing core" the rings and
+   particles orbit. Radial gradient only, so it composites cheaply. */
+.core-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 210px;
+  height: 210px;
+  margin: -105px 0 0 -105px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--color-cta) 30%, transparent) 0%,
+    color-mix(in srgb, var(--color-saffron) 14%, transparent) 45%,
+    transparent 72%);
+  filter: blur(2px);
+  animation: coreGlowPulse 4.2s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
+@keyframes coreGlowPulse {
+  0%, 100% { transform: scale(1); opacity: 0.75; }
+  50%      { transform: scale(1.12); opacity: 1; }
+}
+
 /* Orbiting ring, tilted into the same 3D plane as the cube. */
 .orbit-ring {
   position: absolute;
@@ -621,6 +644,11 @@ button, a, [role="button"], label, input, select, textarea {
   border-color: color-mix(in srgb, var(--color-saffron) 35%, transparent);
   animation-duration: 22s;
   animation-direction: reverse;
+}
+.orbit-ring.fast {
+  width: 148px; height: 148px; margin: -74px 0 0 -74px;
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+  animation-duration: 8s;
 }
 @keyframes ringSpin {
   from { transform: rotateX(74deg) rotateZ(0deg); }
@@ -647,6 +675,68 @@ button, a, [role="button"], label, input, select, textarea {
 }
 @keyframes progressSweep {
   to { transform: translateX(100%); }
+}
+
+/* Determinate variant of .progress-track: a real fill driven by actual
+   auth/config resolution (see LoadingScreen.tsx), not a timer. The
+   indeterminate sweep above is for every OTHER loading moment in the app,
+   where there is no real progress signal to report and pretending
+   otherwise would be exactly the kind of fabricated status this codebase
+   avoids everywhere else. */
+.progress-track.determinate::after { display: none; }
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-cta), var(--color-saffron));
+  transition: width 0.5s var(--ease-out);
+}
+
+.boot-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+}
+.boot-task {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-content-3);
+  opacity: 0.55;
+  transition: opacity 0.3s, color 0.3s;
+}
+.boot-task.active { opacity: 1; color: var(--color-content); }
+.boot-task.done { opacity: 0.9; color: var(--color-success); }
+.boot-task-dot {
+  width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center;
+  border: 1.5px solid color-mix(in srgb, var(--color-content-3) 45%, transparent);
+  transition: all 0.3s;
+}
+.boot-task.active .boot-task-dot {
+  border-color: var(--color-cta);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-cta) 60%, transparent);
+}
+.boot-task.active .boot-task-dot::after {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-cta);
+  animation: bootDotPulse 1s var(--ease-in-out) infinite;
+}
+.boot-task.done .boot-task-dot {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+.boot-task.done .boot-task-dot::after {
+  content: '✓';
+  font-size: 9px;
+  color: #fff;
+  font-weight: 700;
+}
+@keyframes bootDotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.7); }
 }
 
 /* Staggered fade-up for loading copy (30–50ms apart per the motion rules). */
@@ -727,7 +817,9 @@ button, a, [role="button"], label, input, select, textarea {
 @media (prefers-reduced-motion: reduce) {
   .cube-3d { animation: none !important; transform: rotateX(-22deg) rotateY(-38deg); }
   .orbit-ring, .cube-shadow, .progress-track::after, .fade-up,
-  .particle, .cube-face::after, .stagger > * { animation: none !important; }
+  .particle, .cube-face::after, .stagger > *,
+  .core-glow, .boot-task-dot::after { animation: none !important; }
+  .core-glow { opacity: 0.6; transform: scale(1); }
   .particle { opacity: 0.35; }
   .glass-shard { transform: none !important; transition: none; }
   .progress-track::after { transform: none; opacity: 0.85; }

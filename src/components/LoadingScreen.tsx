@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { ShieldCheck, Droplet, Zap, Trash2, MapPin, Activity } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useConfig } from '../context/ConfigContext';
 
 /**
  * Immersive 3D boot splash.
@@ -25,12 +27,32 @@ const FACES = [
   { cls: 'bottom', Icon: Trash2 },
 ] as const;
 
-const MESSAGES = [
-  'Restoring your session…',
-  'Verifying secure channel…',
-  'Loading your dashboard…',
-  'Almost there…',
-];
+/**
+ * The boot checklist shown once, on first load, when no `label` override is
+ * passed in. Each item's `done` is a real signal from AuthContext /
+ * ConfigContext - never a timer standing in for one. A step that always
+ * takes exactly 700ms regardless of what is actually happening is the same
+ * kind of fabricated status this app refuses to show anywhere else (see
+ * server/config.ts's honest LIVE/DEMO/CONFIGURATION_REQUIRED modes); a
+ * splash screen is not a good enough reason to make an exception.
+ */
+function useBootTasks() {
+  const { status } = useAuth();
+  const { loading: configLoading } = useConfig();
+  const authDone = status !== 'loading';
+  const configDone = !configLoading;
+  const tasks = [
+    { label: 'Verifying your secure session', done: authDone },
+    { label: 'Checking service status', done: authDone && configDone },
+    { label: 'Preparing your dashboard', done: authDone && configDone },
+  ];
+  const doneCount = tasks.filter(t => t.done).length;
+  const activeIndex = tasks.findIndex(t => !t.done);
+  // Never claims 100% until every real task is actually done - the last
+  // few percent belong to the exit transition, not to this hook.
+  const percent = Math.min(92, 12 + doneCount * 28);
+  return { tasks, activeIndex, percent, allDone: doneCount === tasks.length };
+}
 
 /** Deterministic PRNG so particle layout is stable between renders. */
 function seeded(seed: number) {
@@ -50,8 +72,9 @@ const SHARDS = [
 ];
 
 export function LoadingScreen({ label, exiting = false }: { label?: string; exiting?: boolean }) {
-  const [messageIndex, setMessageIndex] = useState(0);
   const sceneRef = useRef<HTMLDivElement>(null);
+  const boot = useBootTasks();
+  const bootText = boot.tasks[boot.activeIndex]?.label ?? 'Almost there…';
 
   const particles = useMemo(() => {
     const rand = seeded(20260731);
@@ -66,15 +89,6 @@ export function LoadingScreen({ label, exiting = false }: { label?: string; exit
       warm: rand() > 0.65,
     }));
   }, []);
-
-  useEffect(() => {
-    if (label) return;
-    const t = setInterval(
-      () => setMessageIndex(i => (i + 1) % MESSAGES.length),
-      1900,
-    );
-    return () => clearInterval(t);
-  }, [label]);
 
   // Pointer parallax — writes CSS vars directly, never re-renders.
   useEffect(() => {
@@ -165,6 +179,8 @@ export function LoadingScreen({ label, exiting = false }: { label?: string; exit
           style={{ width: 260, height: 220 }}
           aria-hidden="true"
         >
+          <div className="core-glow" />
+          <div className="orbit-ring fast" />
           <div className="orbit-ring" />
           <div className="orbit-ring slow" />
           <div className="cube-3d">
@@ -184,21 +200,48 @@ export function LoadingScreen({ label, exiting = false }: { label?: string; exit
           CivicAI
         </h1>
 
-        {/* Fixed height stops the layout jumping as messages rotate. */}
+        {/* Fixed height stops the layout jumping as the active task changes. */}
         <div className="h-6 mt-1.5 flex items-center justify-center">
           <p
-            key={label ?? messageIndex}
+            key={label ?? boot.activeIndex}
             className="fade-up text-sm font-semibold text-content-3 text-center"
           >
-            {label ?? MESSAGES[messageIndex]}
+            {label ?? bootText}
           </p>
         </div>
 
-        <div
-          className="fade-up progress-track mt-6"
-          style={{ animationDelay: '180ms' }}
-          aria-hidden="true"
-        />
+        {label ? (
+          <div
+            className="fade-up progress-track mt-6"
+            style={{ animationDelay: '180ms' }}
+            aria-hidden="true"
+          />
+        ) : (
+          <>
+            {/* Real progress, not a timer: the fill width is
+                boot.percent, computed from actual AuthContext/
+                ConfigContext state in useBootTasks() above. */}
+            <div
+              className="fade-up progress-track determinate mt-6"
+              style={{ animationDelay: '180ms' }}
+              aria-hidden="true"
+            >
+              <div className="progress-fill" style={{ width: `${boot.percent}%` }} />
+            </div>
+
+            <div className="boot-tasks fade-up" style={{ animationDelay: '220ms' }} aria-hidden="true">
+              {boot.tasks.map((task, i) => (
+                <div
+                  key={task.label}
+                  className={`boot-task ${task.done ? 'done' : i === boot.activeIndex ? 'active' : ''}`}
+                >
+                  <span className="boot-task-dot" />
+                  <span>{task.label}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <p
           className="fade-up flex items-center gap-1.5 text-[12px] font-semibold mt-7 text-content-3"
