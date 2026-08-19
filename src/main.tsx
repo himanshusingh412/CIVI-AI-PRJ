@@ -1,7 +1,6 @@
 import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import App from './App.tsx';
 import { LandingPage } from './pages/LandingPage.tsx';
 import { SignInPage } from './pages/SignInPage.tsx';
 import { RequireAuth } from './portals/RequireRole.tsx';
@@ -39,6 +38,12 @@ import './index.css';
  *
  * Unknown paths fall back to the public landing page, never to a portal.
  */
+// The citizen dashboard (recharts + react-leaflet under the hood) is the
+// heaviest single screen in the app. It must not be part of the eagerly
+// loaded entry bundle - a first-time citizen landing on the public home
+// page has no use for a charting or mapping library, and this product
+// exists partly for people on constrained mobile data.
+const App = lazy(() => import('./App.tsx'));
 const AdminPortalPage = lazy(() =>
   import('./portals/AdminPortalPage.tsx').then(m => ({ default: m.AdminPortalPage })));
 const DepartmentPortalPage = lazy(() =>
@@ -64,7 +69,9 @@ function CitizenPortal() {
   return (
     <RequireAuth>
       <SplashGate loading={status === 'loading'}>
-        <App />
+        <Suspense fallback={<LoadingScreen label="Loading your dashboard…" />}>
+          <App />
+        </Suspense>
       </SplashGate>
     </RequireAuth>
   );

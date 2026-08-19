@@ -20,6 +20,7 @@ pv[0-9]*/
 cbuild/
 a11y-build*/
 audit-build/
+perf-build/
 
 # Leftover scratch file from the audit (sandbox could not delete it).
 src/__eb_test.tsx
