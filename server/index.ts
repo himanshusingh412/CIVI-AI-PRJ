@@ -42,8 +42,17 @@ import { scoreDuplicates, classify } from './duplicates.js';
 import { runSlaSweep, startSlaScheduler } from './sla.js';
 import { mediaRouter, serveMedia } from './media.js';
 import { complaintsRouter } from './complaints.js';
+import { documentsRouter, documentVerificationStatus } from './documents.js';
+import { digilockerRouter } from './digilockerRoutes.js';
+import { whatsappRouter } from './whatsappRoutes.js';
+import { notificationRouter } from './notificationRoutes.js';
+import { notificationStatus } from './notifications.js';
+import { whatsappStatus } from './whatsapp.js';
 import { smsStatus } from './sms.js';
 import { seedDemoData, storeStatus, initStore, store } from './store.js';
+import { publicConfig, integrations, flags } from './config.js';
+import { resolveStaff, homeRouteFor, staffDirectoryStatus } from './staff.js';
+import { permissionsFor } from './rbac.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -51,7 +60,19 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(securityHeaders);
-app.use(express.json({ limit: '64kb' }));
+/**
+ * The raw body is stashed alongside the parsed one.
+ *
+ * WhatsApp signs its webhooks with an HMAC over the EXACT bytes it sent.
+ * Re-serialising the parsed object changes key order and whitespace and
+ * therefore the digest, so the original buffer has to survive parsing. A
+ * `verify` hook is the standard way to do that without reordering
+ * middleware or excluding the route from body parsing entirely.
+ */
+app.use(express.json({
+  limit: '64kb',
+  verify: (req, _res, buf) => { (req as any).rawBody = Buffer.from(buf); },
+}));
 
 // Reject malformed JSON with a clean 400 instead of an Express stack trace.
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -123,6 +144,20 @@ function boot(): Promise<void> {
 app.use('/api', (_req, _res, next) => {
   boot().then(() => next(), next);
 });
+
+/**
+ * WhatsApp is mounted BEFORE the global limiter and gets its own, larger
+ * budget. Meta batches inbound messages and retries aggressively; sharing
+ * the 120/min browser budget would mean a busy hour silently dropping
+ * citizens' complaints, and Meta responds to sustained failures by disabling
+ * the subscription entirely.
+ *
+ * CSRF does not apply: csrfProtection only engages when a session cookie is
+ * present, and Meta sends none. The webhook's authenticity is established by
+ * its HMAC signature instead — see server/whatsapp.ts.
+ */
+const whatsappLimiter = createRateLimiter({ name: 'whatsapp', windowMs: 60_000, max: 600 });
+app.use('/api/whatsapp', whatsappLimiter, whatsappRouter);
 
 app.use('/api', globalLimiter);
 app.use('/api', csrfProtection);
@@ -251,6 +286,58 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Who am I, and where do I belong?
+ *
+ * One endpoint the client can always call, for citizens and staff alike.
+ * It exists so the browser never has to DECIDE its own role: after sign-in
+ * the app asks the server where to go and follows the answer.
+ *
+ * A tampered client can of course navigate anywhere it likes. That is fine,
+ * and is the reason this returns a *route* rather than a capability — every
+ * one of those routes then fetches data through endpoints that re-check
+ * authorisation server-side. Routing is convenience; authorisation is
+ * enforcement. Conflating the two is how role-based UIs become role-based
+ * vulnerabilities.
+ */
+app.get('/api/me', requireAuth, async (req, res) => {
+  try {
+    const s = (req as any).session;
+    const staff = await resolveStaff(s.subjectHash);
+
+    if (!staff) {
+      return res.json({
+        ok: true,
+        identifier: s.identifier,
+        channel: s.channel,
+        isStaff: false,
+        role: 'citizen',
+        displayName: s.identifier,
+        homeRoute: homeRouteFor('citizen'),
+        permissions: [],
+        scope: {},
+      });
+    }
+
+    return res.json({
+      ok: true,
+      identifier: s.identifier,
+      channel: s.channel,
+      isStaff: true,
+      role: staff.role,
+      displayName: staff.displayName,
+      homeRoute: homeRouteFor(staff.role),
+      permissions: permissionsFor(staff.role),
+      scope: staff.scope,
+      // How the grant was obtained. Useful when an operator is staring at a
+      // portal wondering why they are (or are not) an admin.
+      grantSource: staff.source,
+    });
+  } catch (err) {
+    return safeError(res, err);
+  }
+});
+
 app.get('/api/auth/session', requireAuth, (req, res) => {
   const s = (req as any).session;
   res.json({
@@ -373,10 +460,13 @@ app.post('/api/response-templates', requireAuth, aiLimiter, async (req, res) => 
  */
 app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({
-    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
-    emailOtpEnabled: true,
-  });
+  /**
+   * Single source of truth for what the browser is allowed to believe about
+   * this deployment. Every LIVE / DEMO / CONFIGURATION REQUIRED badge in the
+   * UI is derived from this payload — no component asserts its own status.
+   * See server/config.ts for why that rule exists.
+   */
+  res.json(publicConfig());
 });
 
 // ───────────────────────── citizen complaints ─────────────────────────
@@ -390,6 +480,18 @@ app.use('/api/complaints', requireAuth, complaintsRouter);
 // authorisation.
 app.use('/api/media', requireAuth, mediaRouter);
 app.get('/api/media/:id', requireAuth, serveMedia);
+
+// ───────────────────────── document verification ─────────────────────────
+/**
+ * Both routers sit behind requireAuth. Uploaded identity documents are the
+ * most sensitive payload this API handles, so there is no anonymous path to
+ * any of it — including the DigiLocker consent screen, which would otherwise
+ * be an unauthenticated page on a government domain that asks people to
+ * approve sharing their documents.
+ */
+app.use('/api/notifications', requireAuth, notificationRouter);
+app.use('/api/documents', requireAuth, documentsRouter);
+app.use('/api/digilocker', requireAuth, digilockerRouter);
 
 // ───────────────────────── real-time ─────────────────────────
 /**
@@ -457,6 +559,12 @@ app.get('/api/health', (_req, res) =>
       databaseUrl: !!process.env.DATABASE_URL,
       googleClientId: !!process.env.GOOGLE_CLIENT_ID,
     },
+    features: flags(),
+    integrations: integrations(),
+    staffDirectory: staffDirectoryStatus(),
+    documentVerification: documentVerificationStatus(),
+    notifications: notificationStatus(),
+    whatsapp: whatsappStatus(),
   }),
 );
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageSquare,
@@ -33,6 +34,10 @@ import {
   Locate,
   Briefcase,
   Gauge,
+  Sparkles as SparklesIcon,
+  FileSearch as FileSearchIcon,
+  ClipboardList as ClipboardListIcon,
+  Bell as BellIcon,
 } from 'lucide-react';
 import {
   BarChart,
@@ -198,6 +203,7 @@ export default function App() {
 
   const { status, user, onSignedIn, signOut, signingOut } = useAuth();
   const { isDark: isDarkMode, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const isAuthenticated = status === 'authenticated';
 
   const handleSignedIn = useCallback((u: { identifier: string; channel: 'phone' | 'google' }) => {
@@ -783,8 +789,14 @@ export default function App() {
     showToast("Exporting CSV...");
   };
 
+  /**
+   * Belt and braces. /portal is wrapped in RequireAuth, so an anonymous
+   * visitor is redirected before this component mounts — but a session that
+   * expires while the tab is open lands here, and showing the sign-in form
+   * in place is better than a blank dashboard.
+   */
   if (status !== 'authenticated') {
-    return <LoginScreen onSignedIn={handleSignedIn} />;
+    return <LoginScreen onSignedIn={handleSignedIn} audience="citizen" />;
   }
 
   return (
@@ -910,6 +922,20 @@ export default function App() {
               </AnimatePresence>
             </div>
 
+            {/*
+              The assistant is a route now, not a tab. Linking out rather
+              than switching `view` is the point: it gets its own layout,
+              its own history, and its own room for a conversation.
+            */}
+            <Link
+              to="/portal/assistant"
+              className="hidden md:flex items-center gap-2 px-4 h-10 rounded-xl text-xs font-bold
+                         text-white transition-colors"
+              style={{ background: 'var(--color-cta)' }}
+            >
+              <SparklesIcon size={16} aria-hidden="true" /> {t('nav.openAssistant')}
+            </Link>
+
             <button
               onClick={() => setView('dashboard')}
               aria-current={view === 'dashboard' ? 'page' : undefined}
@@ -953,6 +979,26 @@ export default function App() {
           aria-label="Main navigation"
         >
           <div className="px-5 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">Main Menu</div>
+          <SidebarItem
+            onClick={() => navigate('/portal/report')}
+            icon={<ClipboardListIcon size={18} />}
+            label={t('nav.fileComplaint')}
+          />
+          <SidebarItem
+            onClick={() => navigate('/portal/assistant')}
+            icon={<SparklesIcon size={18} />}
+            label={t('nav.assistant')}
+          />
+          <SidebarItem
+            onClick={() => navigate('/portal/documents')}
+            icon={<FileSearchIcon size={18} />}
+            label={t('nav.documents')}
+          />
+          <SidebarItem
+            onClick={() => navigate('/portal/settings')}
+            icon={<BellIcon size={18} />}
+            label={t('nav.notifications')}
+          />
           <SidebarItem 
             active={view === 'chat'} 
             onClick={() => setView('chat')} 
@@ -1932,6 +1978,7 @@ export default function App() {
       </AnimatePresence>
 
       <MobileNav
+        onAssistant={() => navigate('/portal/assistant')}
         view={view}
         onNavigate={setView}
         pendingCount={stats.pending}

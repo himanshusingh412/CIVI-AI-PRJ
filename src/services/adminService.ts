@@ -52,8 +52,10 @@ export type AdminComplaint = {
   slaDeadline: string;
   lat?: number;
   lng?: number;
-  timeline: { at: string; status: string; actorName: string; note?: string; isPublic: boolean }[];
+  timeline: { at: string; status: string; statusLabel: string; actorName: string; note?: string; isPublic: boolean }[];
   internalNotes: { at: string; authorName: string; body: string }[];
+  publicUpdates: { at: string; body: string }[];
+  attachments: { id: string; kind: string; filename: string; key: string; sizeBytes: number; uploadedAt: string }[];
   availableTransitions: Transition[];
 };
 
@@ -86,24 +88,20 @@ export type MeResponse = {
   principal: Principal;
   permissions: Permission[];
   roles: Role[];
+  /** Where this principal belongs, decided server-side. */
+  homeRoute: string;
   store: { backend: string; durable: boolean; warning: string };
 };
 
 /**
- * Dev-only role impersonation. The server ignores this header entirely when
- * NODE_ENV=production, so it cannot be used to escalate in a real deployment.
- */
-let demoRole: string | null = null;
-export const setDemoRole = (r: string | null) => { demoRole = r; };
-export const getDemoRole = () => demoRole;
-
-const withRole = (path: string) =>
-  demoRole ? `${path}${path.includes('?') ? '&' : '?'}_r=${encodeURIComponent(demoRole)}` : path;
-
-/**
- * The demo role travels as a header. apiGet/apiPost don't accept custom
- * headers, so this wraps fetch directly while keeping the same credential
- * and CSRF handling.
+ * Role impersonation via the `x-demo-role` header has been REMOVED.
+ *
+ * It was gated to non-production, so it was never exploitable in a real
+ * deployment — but a header that changes your role is the exact shape of the
+ * vulnerability this system exists to avoid, and its presence meant every
+ * reading of the authorisation code had to carry an "except in development"
+ * caveat. Roles are now data (server/staff.ts) and every role has a real
+ * account you can actually sign into, so nothing was lost by deleting it.
  */
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T | AuthError> {
   try {
@@ -114,7 +112,6 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T | Auth
       headers: {
         'Content-Type': 'application/json',
         ...(csrf ? { 'x-csrf-token': decodeURIComponent(csrf[1]) } : {}),
-        ...(demoRole ? { 'x-demo-role': demoRole } : {}),
         ...(init?.headers as Record<string, string> | undefined),
       },
     });
@@ -158,6 +155,18 @@ export const assignOfficer = (id: string, officerId: string, officerName: string
     { method: 'POST', body: JSON.stringify({ officerId, officerName }) },
   );
 
+/**
+ * A note that is not a status change. `visibility` defaults to internal on
+ * the server too - the safe value is the one you get by saying nothing,
+ * because getting it backwards publishes an officer's private working note
+ * to the complainant.
+ */
+export const addNote = (id: string, body: string, visibility: 'internal' | 'public' = 'internal') =>
+  adminFetch<{ ok: true; complaint: AdminComplaint }>(
+    `/api/admin/complaints/${encodeURIComponent(id)}/note`,
+    { method: 'POST', body: JSON.stringify({ body, visibility }) },
+  );
+
 export const fetchAnalytics = () => adminFetch<Analytics>('/api/admin/analytics');
 
 export const fetchAudit = (limit = 100) =>
@@ -165,4 +174,4 @@ export const fetchAudit = (limit = 100) =>
     `/api/admin/audit?limit=${limit}`,
   );
 
-export { isAuthError, withRole, apiGet, apiPost };
+export { isAuthError, apiGet, apiPost };

@@ -3,12 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+
+    <title>CivicAI — Your Digital Gateway to Government Services</title>
+    <meta
+      name="description"
+      content="Report a civic problem, verify your documents before you apply, and track every complaint to resolution. Available in 12 Indian languages."
+    />
+    <!--
+      Matches --color-bg-main in each theme so the mobile browser chrome does
+      not flash white above a dark page (and vice versa) on first paint.
+    -->
+    <meta name="theme-color" content="#F8FAFC" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0A0F1D" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/civicai-icon.png" />
+
+    <!-- Social preview. Harmless if the deployment is private. -->
+    <meta property="og:title" content="CivicAI — Your Digital Gateway to Government Services" />
+    <meta
+      property="og:description"
+      content="AI-assisted civic grievance reporting, document verification and complaint tracking."
+    />
+    <meta property="og:type" content="website" />
+
+    <!--
+      Google Identity Services. Loaded async/defer so a blocked or slow
+      accounts.google.com cannot delay first paint — the OTP sign-in path
+      stays fully usable if this script never arrives.
+    -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script type="module" src="/src/main.tsx"></script>
   </head>
   <body>
     <div id="root"></div>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script type="module" src="/src/main.tsx"></script>
+    <noscript>
+      <div style="max-width:40rem;margin:4rem auto;padding:0 1.5rem;font-family:system-ui,sans-serif;line-height:1.6">
+        <h1 style="font-size:1.5rem">CivicAI needs JavaScript</h1>
+        <p>
+          This portal requires JavaScript to file and track complaints. If you
+          cannot enable it, please contact your local grievance office
+          directly.
+        </p>
+      </div>
+    </noscript>
   </body>
 </html>
-

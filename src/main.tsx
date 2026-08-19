@@ -1,16 +1,12 @@
 import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import App from './App.tsx';
-/**
- * Lazy so the admin bundle never ships to citizens. Without this the two
- * portals are only separate by route — the code still lands in every
- * visitor's initial download.
- */
-const AdminPortalPage = lazy(() =>
-  import('./portals/AdminPortalPage.tsx').then(m => ({ default: m.AdminPortalPage })));
+import { LandingPage } from './pages/LandingPage.tsx';
+import { SignInPage } from './pages/SignInPage.tsx';
+import { RequireAuth } from './portals/RequireRole.tsx';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { ThemeProvider } from './context/ThemeContext.tsx';
+import { ConfigProvider } from './context/ConfigContext.tsx';
 import { I18nProvider } from './i18n/I18nContext.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { SplashGate } from './components/SplashGate.tsx';
@@ -18,23 +14,72 @@ import { LoadingScreen } from './components/LoadingScreen.tsx';
 import './index.css';
 
 /**
- * Two portals, one backend.
+ * Route map.
  *
- *   /              citizen portal
- *   /portal/admin  staff portal — never linked from public navigation
+ *   /                   public landing page — no account required
+ *   /login              citizen sign-in
+ *   /staff              staff sign-in (same identity provider, different door)
+ *   /portal             citizen portal
+ *   /portal/officer     field officer workspace
+ *   /portal/department  district / department administration
+ *   /portal/admin       system administration
  *
- * They are separate route trees rather than a view flag inside one app, so
- * the admin bundle and its chrome cannot leak into the citizen surface, and
- * the URL itself is the boundary.
+ * Two properties this layout is designed to hold:
+ *
+ *  1. The staff bundles are lazy, so an ordinary citizen never downloads the
+ *     administration code. Without the lazy boundary the portals would be
+ *     "separate" by URL only, while the JavaScript still landed in every
+ *     visitor's initial payload.
+ *
+ *  2. Routing is NOT authorisation. Each gate below decides what to RENDER;
+ *     every screen behind it then fetches through endpoints that re-check
+ *     capability and jurisdiction server-side. Someone who edits the URL
+ *     gets a screen that refuses to fill itself, not a leak.
+ *
+ * Unknown paths fall back to the public landing page, never to a portal.
  */
-function CitizenRoot() {
+// The citizen dashboard (recharts + react-leaflet under the hood) is the
+// heaviest single screen in the app. It must not be part of the eagerly
+// loaded entry bundle - a first-time citizen landing on the public home
+// page has no use for a charting or mapping library, and this product
+// exists partly for people on constrained mobile data.
+const App = lazy(() => import('./App.tsx'));
+const AdminPortalPage = lazy(() =>
+  import('./portals/AdminPortalPage.tsx').then(m => ({ default: m.AdminPortalPage })));
+const DepartmentPortalPage = lazy(() =>
+  import('./portals/DepartmentPortalPage.tsx').then(m => ({ default: m.DepartmentPortalPage })));
+const OfficerPortalPage = lazy(() =>
+  import('./portals/OfficerPortalPage.tsx').then(m => ({ default: m.OfficerPortalPage })));
+/**
+ * The assistant is lazy for a different reason than the staff portals: it is
+ * a full second application surface (its own layout, voice, conversation
+ * store), and most visits to /portal never open it.
+ */
+const AssistantPage = lazy(() =>
+  import('./pages/AssistantPage.tsx').then(m => ({ default: m.AssistantPage })));
+const DocumentVerificationPage = lazy(() =>
+  import('./pages/DocumentVerificationPage.tsx').then(m => ({ default: m.DocumentVerificationPage })));
+const ReportWizardPage = lazy(() =>
+  import('./pages/ReportWizardPage.tsx').then(m => ({ default: m.ReportWizardPage })));
+const NotificationSettingsPage = lazy(() =>
+  import('./pages/NotificationSettingsPage.tsx').then(m => ({ default: m.NotificationSettingsPage })));
+
+function CitizenPortal() {
   const { status } = useAuth();
   return (
-    <SplashGate loading={status === 'loading'}>
-      <App />
-    </SplashGate>
+    <RequireAuth>
+      <SplashGate loading={status === 'loading'}>
+        <Suspense fallback={<LoadingScreen label="Loading your dashboard…" />}>
+          <App />
+        </Suspense>
+      </SplashGate>
+    </RequireAuth>
   );
 }
+
+const staffRoute = (label: string, element: React.ReactNode) => (
+  <Suspense fallback={<LoadingScreen label={label} />}>{element}</Suspense>
+);
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Root element #root not found in index.html');
@@ -44,23 +89,73 @@ createRoot(container).render(
     <ErrorBoundary scope="root">
       <ThemeProvider>
         <I18nProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<CitizenRoot />} />
-              <Route
-                path="/portal/admin"
-                element={
-                  <Suspense fallback={<LoadingScreen label="Loading staff portal…" />}>
-                    <AdminPortalPage />
-                  </Suspense>
-                }
-              />
-              {/* Unknown paths fall back to the citizen portal, never to admin. */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
+          <ConfigProvider>
+            <AuthProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/login" element={<SignInPage audience="citizen" />} />
+                  <Route path="/staff" element={<SignInPage audience="staff" />} />
+
+                  <Route path="/portal" element={<CitizenPortal />} />
+                  <Route
+                    path="/portal/assistant"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening the assistant…" />}>
+                          <AssistantPage />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/portal/settings"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening your settings…" />}>
+                          <NotificationSettingsPage />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/portal/report"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening the complaint form…" />}>
+                          <ReportWizardPage />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/portal/documents"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening document verification…" />}>
+                          <DocumentVerificationPage />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/portal/officer"
+                    element={staffRoute('Loading officer workspace…', <OfficerPortalPage />)}
+                  />
+                  <Route
+                    path="/portal/department"
+                    element={staffRoute('Loading department portal…', <DepartmentPortalPage />)}
+                  />
+                  <Route
+                    path="/portal/admin"
+                    element={staffRoute('Loading staff portal…', <AdminPortalPage />)}
+                  />
+
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </BrowserRouter>
+            </AuthProvider>
+          </ConfigProvider>
         </I18nProvider>
       </ThemeProvider>
     </ErrorBoundary>

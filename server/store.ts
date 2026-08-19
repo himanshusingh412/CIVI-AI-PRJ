@@ -46,6 +46,17 @@ export type Complaint = {
   citizenName: string;
   citizenPhone: string;
   citizenEmail?: string;
+  /**
+   * SHA-256 of the filer's verified identity, copied from their session at
+   * creation time.
+   *
+   * This is how a status change finds the right in-app inbox. Matching on
+   * the phone number instead would break the moment somebody signs in with
+   * Google after filing by SMS, and would mean an identifier the citizen can
+   * change out from under their own notifications. The raw address is never
+   * stored here — only the same hash the session carries.
+   */
+  citizenSubjectHash?: string;
 
   category: string;
   aiCategory?: string;

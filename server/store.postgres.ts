@@ -136,6 +136,16 @@ const toComplaint = (r: any): Complaint => ({
   citizenRating: r.citizen_rating ?? undefined,
 });
 
+/**
+ * Raw client, for modules that need to query tables this store does not own
+ * (server/staff.ts reads users/roles/officers). Returns null when Postgres
+ * is not configured, so callers must handle the no-database case explicitly
+ * rather than discovering it as a runtime crash.
+ */
+export function client(): SqlClient | null {
+  return sql;
+}
+
 export const postgresStore: ComplaintStore = {
   async list() {
     if (!sql) throw new Error('postgres_not_initialised');

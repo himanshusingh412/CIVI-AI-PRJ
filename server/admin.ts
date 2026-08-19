@@ -9,9 +9,11 @@ import {
   isTerminal, type Status,
 } from './workflow.js';
 import { store, storeStatus, type Complaint } from './store.js';
-import { getSession, sessionMatchesEmail, sessionMatchesPhone } from './auth.js';
+import { getSession } from './auth.js';
+import { resolveStaff, toPrincipal, homeRouteFor } from './staff.js';
 import { tokenFromRequest, safeError } from './security.js';
 import { ipOf } from './rateLimit.js';
+import { notify, type NotificationEvent } from './notifications.js';
 
 /**
  * Admin API. Every route is guarded by `requirePermission`, which checks
@@ -33,62 +35,32 @@ const MUTATING_PERMISSIONS: Permission[] = [
 ];
 
 /**
- * Demo principal directory.
- *
- * NOTE: role assignment is keyed off the signed-in session identity. In
- * production this belongs in the users table with an admin-managed mapping;
- * hard-coding it here keeps the RBAC layer demonstrable without inventing a
- * half-built user-management system that would look more finished than it is.
- */
-const DEMO_PRINCIPALS: Record<string, Omit<Principal, 'id'>> = {
-  'super':    { role: 'super_admin',        scope: {},                                                  displayName: 'Super Admin' },
-  'state':    { role: 'state_admin',        scope: { state: 'Delhi' },                                  displayName: 'Delhi State Admin' },
-  'district': { role: 'district_admin',     scope: { state: 'Delhi', district: 'New Delhi' },           displayName: 'New Delhi District Admin' },
-  'dept':     { role: 'department_officer', scope: { state: 'Delhi', department: 'Water Department' },  displayName: 'Water Dept Officer' },
-  'field':    { role: 'field_officer',      scope: { officerId: 'off-1' },                              displayName: 'Field Officer (off-1)' },
-  'auditor':  { role: 'auditor',            scope: {},                                                  displayName: 'Read-only Auditor' },
-};
-
-/**
  * Resolves the caller's principal.
  *
- * The `x-demo-role` header is honoured ONLY outside production, so the RBAC
- * matrix can be exercised without six real accounts. In production the role
- * must come from the session, and an unmapped session gets no admin access
- * at all (deny by default).
+ * All of the "who is this person" logic now lives in server/staff.ts, which
+ * answers from the users/roles tables (or a configured directory) keyed on
+ * the session's subject hash. Two things deliberately disappeared here:
+ *
+ *   - The DEMO_PRINCIPALS object. Role is data now, not a constant.
+ *   - The `x-demo-role` header. It was gated to non-production, but a
+ *     request header that changes your role is the exact shape of the bug
+ *     this system must never have — and its existence made every reading of
+ *     this file start with "except in development". Demo accounts are real
+ *     sign-ins now (see DEMO_STAFF), so nothing is lost.
+ *
+ * Returns null for citizens and unknown sessions alike: deny by default.
  */
-function principalFrom(req: express.Request): Principal | null {
+async function principalFrom(req: express.Request): Promise<Principal | null> {
   const session = getSession(tokenFromRequest(req));
   if (!session) return null;
 
-  const isProd = process.env.NODE_ENV === 'production';
-  if (!isProd) {
-    const demo = String(req.headers['x-demo-role'] || '').toLowerCase();
-    if (demo && DEMO_PRINCIPALS[demo]) {
-      return { id: `demo-${demo}`, ...DEMO_PRINCIPALS[demo] };
-    }
-  }
-
-  // Match on the session's subject hash, not the displayed identifier —
-  // that value is masked ("hi•••@gmail.com") and could never equal a real
-  // address, which silently disabled SUPER_ADMIN_EMAIL entirely.
-  // Two doors to the same identity: Google gives an email, SMS OTP gives a
-  // number. Either configured value grants super_admin, so switching the OTP
-  // channel to SMS cannot lock the operator out.
-  const superEmail = process.env.SUPER_ADMIN_EMAIL || '';
-  const superPhone = process.env.SUPER_ADMIN_PHONE || '';
-  const isSuper =
-    (superEmail && sessionMatchesEmail(session.subjectHash, superEmail)) ||
-    (superPhone && sessionMatchesPhone(session.subjectHash, superPhone));
-  const mapped = isSuper ? DEMO_PRINCIPALS.super : null;
-
-  if (!mapped) return null; // deny by default
-  return { id: session.identifier, ...mapped };
+  const staff = await resolveStaff(session.subjectHash);
+  return staff ? toPrincipal(staff) : null;
 }
 
 function requirePermission(permission: Parameters<typeof authorize>[1]) {
-  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const principal = principalFrom(req);
+  return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const principal = await principalFrom(req);
     if (!principal) {
       return res.status(403).json({ error: 'forbidden', message: 'You do not have admin access.' });
     }
@@ -107,6 +79,22 @@ function requirePermission(permission: Parameters<typeof authorize>[1]) {
 
 const principalOf = (req: express.Request): Principal => (req as any).principal;
 
+/**
+ * Which workflow states are worth telling the citizen about.
+ *
+ * Deliberately partial. `ai_verification`, `field_visit_scheduled` and
+ * `evidence_uploaded` are real states an officer needs to see, and noise to
+ * the person waiting for their water to come back on.
+ */
+const CITIZEN_FACING_EVENTS: Partial<Record<Status, NotificationEvent>> = {
+  department_assigned: 'department_assigned',
+  officer_assigned: 'officer_assigned',
+  investigation_started: 'investigation_started',
+  resolved: 'resolved',
+  citizen_verification: 'resolved',
+  closed: 'closed',
+};
+
 /** Applies field-level redaction before anything leaves the server. */
 function project(c: Complaint, p: Principal) {
   const full = canSeeContactDetails(p);
@@ -118,6 +106,16 @@ function project(c: Complaint, p: Principal) {
     // Internal notes are staff-only; auditors read them via the audit log.
     internalNotes: full ? c.internalNotes : [],
     statusLabel: STATUS_LABELS[c.status],
+    /**
+     * Timeline entries carry the raw enum, which surfaced in the officer's
+     * drawer as "officer_assigned". Labelled here rather than in the client
+     * so STATUS_LABELS stays the single source of truth - a client-side copy
+     * is a second place to forget when a status is added.
+     */
+    timeline: c.timeline.map(t => ({
+      ...t,
+      statusLabel: STATUS_LABELS[t.status] ?? String(t.status),
+    })),
     progress: STATUS_PROGRESS[c.status],
     isTerminal: isTerminal(c.status),
     availableTransitions: allowedTransitions(c.status, p.role).map(t => ({
@@ -127,13 +125,14 @@ function project(c: Complaint, p: Principal) {
 }
 
 // ───────────────────────── who am I ─────────────────────────
-adminRouter.get('/me', (req, res) => {
-  const p = principalFrom(req);
+adminRouter.get('/me', async (req, res) => {
+  const p = await principalFrom(req);
   if (!p) return res.status(403).json({ error: 'forbidden', message: 'No admin access.' });
   res.json({
     ok: true,
     principal: { id: p.id, role: p.role, scope: p.scope, displayName: p.displayName },
     permissions: permissionsFor(p.role),
+    homeRoute: homeRouteFor(p.role),
     roles: ROLES,
     store: storeStatus(),
   });
@@ -231,6 +230,30 @@ adminRouter.post('/complaints/:id/status', requirePermission('complaint:read'), 
     audit({ actor: p, action: 'complaint:status_change', targetType: 'complaint', targetId: row.id,
             detail: { from: row.status, to }, ip: ipOf(req) });
 
+    /**
+     * Not every transition is worth interrupting somebody for. A citizen who
+     * gets a message for all fourteen states stops reading them, and then
+     * misses the one that actually needed a reply. Only the transitions that
+     * change what the citizen should DO or KNOW are notified.
+     */
+    const event = CITIZEN_FACING_EVENTS[to];
+    if (event) {
+      void notify(event, {
+        id: row.citizenSubjectHash ?? `phone:${row.citizenPhone}`,
+        phone: row.citizenPhone || undefined,
+        email: row.citizenEmail,
+        name: row.citizenName,
+      }, {
+        complaintId: row.id,
+        category: row.category,
+        department: updated!.department,
+        officerName: updated!.assignedOfficerName,
+        statusLabel: STATUS_LABELS[to],
+        slaDeadline: updated!.slaDeadline,
+        note: note || undefined,
+      });
+    }
+
     res.json({ ok: true, complaint: project(updated!, p) });
   } catch (err) { return safeError(res, err); }
 });
@@ -261,6 +284,57 @@ adminRouter.post('/complaints/:id/assign', requirePermission('complaint:assign')
 
     audit({ actor: p, action: 'complaint:assign', targetType: 'complaint', targetId: row.id,
             detail: { from: row.assignedOfficerId ?? null, to: officerId }, ip: ipOf(req) });
+
+    res.json({ ok: true, complaint: project(updated!, p) });
+  } catch (err) { return safeError(res, err); }
+});
+
+// ───────────────────────── notes ─────────────────────────
+/**
+ * A note without a status change.
+ *
+ * Officers need somewhere to record "called the citizen, no answer" or "site
+ * visit scheduled with the contractor" — facts that are not a workflow
+ * transition. Without this, the only way to leave a record was to advance
+ * the case, which quietly corrupts the status history into a log of things
+ * that did not actually happen.
+ *
+ * Two audiences, one endpoint, chosen explicitly by the caller:
+ *   internal  staff only. Never shown to the citizen.
+ *   public    appears in the citizen's tracking timeline.
+ *
+ * The default is INTERNAL. Getting this backwards publishes an officer's
+ * private working note to the complainant, so the safe value is the one you
+ * get by saying nothing.
+ */
+adminRouter.post('/complaints/:id/note', requirePermission('complaint:note'), async (req, res) => {
+  try {
+    const p = principalOf(req);
+    const row = await store.get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'not_found', message: 'Complaint not found.' });
+
+    const verdict = authorize(p, 'complaint:note', row);
+    if (!verdict.ok) {
+      audit({ actor: p, action: 'access:denied', targetType: 'complaint', targetId: row.id,
+              detail: { permission: 'complaint:note', reason: verdict.reason }, ip: ipOf(req) });
+      return res.status(404).json({ error: 'not_found', message: 'Complaint not found.' });
+    }
+
+    const body = String(req.body?.body ?? '').trim().slice(0, 2000);
+    if (!body) return res.status(400).json({ error: 'bad_request', message: 'A note cannot be empty.' });
+
+    const isPublic = req.body?.visibility === 'public';
+    const at = new Date().toISOString();
+
+    const updated = await store.update(row.id, isPublic
+      ? { publicUpdates: [...row.publicUpdates, { at, body }] }
+      : { internalNotes: [...row.internalNotes, { at, authorId: p.id, authorName: p.displayName, body }] });
+
+    audit({ actor: p, action: 'complaint:note', targetType: 'complaint', targetId: row.id,
+            // The note BODY is not audited: it can contain a citizen's
+            // personal circumstances, and the audit log is read by people who
+            // have no business reading those.
+            detail: { visibility: isPublic ? 'public' : 'internal', length: body.length }, ip: ipOf(req) });
 
     res.json({ ok: true, complaint: project(updated!, p) });
   } catch (err) { return safeError(res, err); }

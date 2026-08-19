@@ -15,6 +15,13 @@ coverage/
 .apitest/
 .apitest2/
 preview-build/
+# Throwaway build outputs used for screenshot verification.
+pv[0-9]*/
+cbuild/
+a11y-build*/
+audit-build/
+perf-build/
+final-build/
 
 # Leftover scratch file from the audit (sandbox could not delete it).
 src/__eb_test.tsx
@@ -30,3 +37,6 @@ src/__eb_test.tsx
 .pv/
 # Throwaway verification probe; the sandbox could not unlink it. Safe to delete.
 _probe.mjs
+
+# Files this sandbox could not unlink; safe to delete the whole folder.
+_to_delete/

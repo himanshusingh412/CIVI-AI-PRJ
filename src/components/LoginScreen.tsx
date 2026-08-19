@@ -27,8 +27,8 @@ type Step = 'identify' | 'otp';
  * Which door the person came through.
  *
  * This is a routing hint, NOT an authorisation claim. Picking "staff" grants
- * nothing — it navigates to /portal/admin, where RequireAdmin and the
- * server's RBAC decide what the session may actually do. Anyone can click
+ * nothing — after sign-in the app asks GET /api/me where this session
+ * belongs, and the server answers from the staff directory. Anyone can click
  * it; that is fine, because the button is not what protects the portal.
  */
 export type Audience = 'citizen' | 'staff';
@@ -353,7 +353,7 @@ const GoogleIcon = () => (
 
             <button
               type="button"
-              onClick={() => navigate('/portal/admin')}
+              onClick={() => navigate('/staff')}
               className="press w-full flex items-center gap-4 p-4 rounded-xl bordered surface-2 text-left
                          hover:border-[var(--color-saffron)] transition-colors"
             >
