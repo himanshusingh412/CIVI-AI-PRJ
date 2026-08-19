@@ -2,7 +2,6 @@ import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LandingPage } from './pages/LandingPage.tsx';
-import { SignInPage } from './pages/SignInPage.tsx';
 import { RequireAuth } from './portals/RequireRole.tsx';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { ThemeProvider } from './context/ThemeContext.tsx';
@@ -44,6 +43,15 @@ import './index.css';
 // page has no use for a charting or mapping library, and this product
 // exists partly for people on constrained mobile data.
 const App = lazy(() => import('./App.tsx'));
+/**
+ * Same reasoning as App above, for a different dependency: SignInPage pulls
+ * in the Firebase client SDK plus @firebase-oss/ui-react (FirebaseUI-for-Web)
+ * via lib/firebase.ts. That's ~500KB an anonymous visitor to the public
+ * landing page has no use for and never asked to download - only someone who
+ * actually clicks through to /login or /staff does.
+ */
+const SignInPage = lazy(() =>
+  import('./pages/SignInPage.tsx').then(m => ({ default: m.SignInPage })));
 const AdminPortalPage = lazy(() =>
   import('./portals/AdminPortalPage.tsx').then(m => ({ default: m.AdminPortalPage })));
 const DepartmentPortalPage = lazy(() =>
@@ -116,8 +124,8 @@ createRoot(container).render(
               <BrowserRouter>
                 <Routes>
                   <Route path="/" element={<LandingPage />} />
-                  <Route path="/login" element={<SignInPage audience="citizen" />} />
-                  <Route path="/staff" element={<SignInPage audience="staff" />} />
+                  <Route path="/login" element={staffRoute('Loading sign-in…', <SignInPage audience="citizen" />)} />
+                  <Route path="/staff" element={staffRoute('Loading sign-in…', <SignInPage audience="staff" />)} />
 
                   <Route path="/portal" element={<CitizenPortal />} />
                   <Route

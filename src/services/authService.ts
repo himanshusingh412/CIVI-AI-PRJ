@@ -155,6 +155,9 @@ export const verifyOtp = (identifier: string, otp: string) =>
 export const googleSignIn = (credential: string) =>
   apiPost<SessionOk>('/api/auth/google', { credential });
 
+export const firebaseSignIn = (idToken: string) =>
+  apiPost<SessionOk>('/api/auth/firebase', { idToken });
+
 export const refreshSession = (signal?: AbortSignal) =>
   apiPost<SessionOk>('/api/auth/refresh', {}, signal);
 

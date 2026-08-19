@@ -9,10 +9,13 @@ import {
   requestOtp,
   verifyOtp,
   googleSignIn,
+  firebaseSignIn,
   validatePhone,
   isAuthError,
   type AuthUser,
 } from '../services/authService';
+import { isFirebaseConfigured, signInWithGoogleFirebase } from '../lib/firebase';
+import { FirebasePhoneAuthUI } from './FirebasePhoneAuthUI';
 
 /**
  * Build-time fallback. The authoritative value comes from GET /api/config at
@@ -181,6 +184,27 @@ const GoogleIcon = () => (
       return;
     }
     completeSignIn(res.identifier, res.channel);
+  };
+
+  const handleFirebaseGoogleSignIn = async () => {
+    setError(null);
+    setInfo(null);
+    setGoogleBusy(true);
+    try {
+      const { idToken } = await signInWithGoogleFirebase();
+      const res = await firebaseSignIn(idToken);
+      if (!mounted.current) return;
+      setGoogleBusy(false);
+      if (isAuthError(res)) {
+        setError(res.message);
+        return;
+      }
+      completeSignIn(res.identifier, res.channel);
+    } catch (err: any) {
+      if (!mounted.current) return;
+      setGoogleBusy(false);
+      setError(err?.message || 'Firebase sign in failed.');
+    }
   };
 
   useEffect(() => {
@@ -489,6 +513,26 @@ const GoogleIcon = () => (
                   <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in…</p>
                 )}
               </div>
+            ) : isFirebaseConfigured() ? (
+              <div className="mb-1">
+                <button
+                  type="button"
+                  onClick={handleFirebaseGoogleSignIn}
+                  disabled={googleBusy}
+                  className="w-full h-11 flex items-center justify-center gap-3 px-4 rounded-full font-medium text-sm transition-all hover:opacity-90 active:scale-[0.98] shadow-sm"
+                  style={{
+                    background: isDark ? '#1e293b' : '#ffffff',
+                    color: isDark ? '#f8fafc' : '#0f172a',
+                    border: `1px solid ${isDark ? '#334155' : '#cbd5e1'}`,
+                  }}
+                >
+                  <GoogleIcon />
+                  <span>Sign in with Firebase</span>
+                </button>
+                {googleBusy && (
+                  <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in with Firebase…</p>
+                )}
+              </div>
             ) : (
               <div className="mb-1">
                 <button
@@ -518,85 +562,96 @@ const GoogleIcon = () => (
               <span className="h-px flex-1" style={{ background: 'var(--color-border)' }} />
             </div>
 
-            <form
-              className="space-y-5"
-              noValidate
-              onSubmit={e => { e.preventDefault(); void handleRequestOtp(); }}
-            >
-              {/* Honeypot — visually hidden, never announced, never tabbable */}
-              <div aria-hidden="true" className="absolute w-px h-px overflow-hidden -left-[9999px]">
-                <label htmlFor="company">Company (leave blank)</label>
-                <input
-                  id="company"
-                  name="company"
-                  type="text"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={honeypot}
-                  onChange={e => setHoneypot(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="phone" className="block text-[13px] font-semibold mb-1.5 text-content">
-                  Mobile number
-                </label>
-                <div className="relative">
-                  <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-content-3" size={18} aria-hidden="true" />
-                  {/* +91 shown as fixed chrome rather than pre-filled text:
-                      a prefix inside the value gets selected and deleted by
-                      people typing over it, then fails validation. */}
-                  <span
-                    aria-hidden="true"
-                    className="absolute left-10 top-1/2 -translate-y-1/2 text-base font-semibold text-content-3 tabular-nums"
-                  >
-                    +91
-                  </span>
+            {isFirebaseConfigured() ? (
+              // FirebaseUI-for-Web owns this entire phone flow internally
+              // (number entry, reCAPTCHA, code verification), so none of
+              // LoginScreen's own step/devCode/attempts state applies here -
+              // it calls completeSignIn directly on success.
+              <FirebasePhoneAuthUI
+                onSignedIn={u => completeSignIn(u.identifier, u.channel)}
+                onError={setError}
+              />
+            ) : (
+              <form
+                className="space-y-5"
+                noValidate
+                onSubmit={e => { e.preventDefault(); void handleRequestOtp(); }}
+              >
+                {/* Honeypot — visually hidden, never announced, never tabbable */}
+                <div aria-hidden="true" className="absolute w-px h-px overflow-hidden -left-[9999px]">
+                  <label htmlFor="company">Company (leave blank)</label>
                   <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    inputMode="numeric"
-                    autoComplete="tel-national"
-                    maxLength={14}
-                    required
-                    aria-describedby="phone-hint"
-                    aria-invalid={!!error || undefined}
-                    disabled={lockedFor > 0}
-                    placeholder="93057 27103"
-                    value={phone}
-                    onChange={e => { setPhone(e.target.value); setError(null); }}
-                    className="w-full h-12 pl-[4.75rem] pr-4 rounded-xl outline-none text-base transition-colors
-                               border-2 focus:border-cta hover:border-[var(--color-content-3)]
-                               disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{
-                      background: 'var(--color-surface)',
-                      color: 'var(--color-content)',
-                      borderColor: 'var(--color-border-strong)',
-                    }}
+                    id="company"
+                    name="company"
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={honeypot}
+                    onChange={e => setHoneypot(e.target.value)}
                   />
                 </div>
-                <p id="phone-hint" className="text-xs mt-1.5 text-content-3">
-                  Enter any 10-digit mobile number. We'll text a 6-digit verification code.
+
+                <div>
+                  <label htmlFor="phone" className="block text-[13px] font-semibold mb-1.5 text-content">
+                    Mobile number
+                  </label>
+                  <div className="relative">
+                    <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-content-3" size={18} aria-hidden="true" />
+                    {/* +91 shown as fixed chrome rather than pre-filled text:
+                        a prefix inside the value gets selected and deleted by
+                        people typing over it, then fails validation. */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-10 top-1/2 -translate-y-1/2 text-base font-semibold text-content-3 tabular-nums"
+                    >
+                      +91
+                    </span>
+                    <input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel-national"
+                      maxLength={14}
+                      required
+                      aria-describedby="phone-hint"
+                      aria-invalid={!!error || undefined}
+                      disabled={lockedFor > 0}
+                      placeholder="93057 27103"
+                      value={phone}
+                      onChange={e => { setPhone(e.target.value); setError(null); }}
+                      className="w-full h-12 pl-[4.75rem] pr-4 rounded-xl outline-none text-base transition-colors
+                                 border-2 focus:border-cta hover:border-[var(--color-content-3)]
+                                 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-content)',
+                        borderColor: 'var(--color-border-strong)',
+                      }}
+                    />
+                  </div>
+                  <p id="phone-hint" className="text-xs mt-1.5 text-content-3">
+                    Enter any 10-digit mobile number. We'll text a 6-digit verification code.
+                  </p>
+                </div>
+
+                <Button
+                  type="submit"
+                  fullWidth
+                  size="lg"
+                  disabled={lockedFor > 0 || !phoneValid}
+                  loadingText="Sending code…"
+                  onClick={() => handleRequestOtp()}
+                >
+                  {lockedFor > 0 ? 'Temporarily locked' : 'Text me a code'}
+                  <ChevronRight size={18} aria-hidden="true" />
+                </Button>
+
+                <p className="text-xs text-center text-content-3">
+                  Limits: 5 codes per 15 minutes · 6 verification attempts
                 </p>
-              </div>
-
-              <Button
-                type="submit"
-                fullWidth
-                size="lg"
-                disabled={lockedFor > 0 || !phoneValid}
-                loadingText="Sending code…"
-                onClick={() => handleRequestOtp()}
-              >
-                {lockedFor > 0 ? 'Temporarily locked' : 'Text me a code'}
-                <ChevronRight size={18} aria-hidden="true" />
-              </Button>
-
-              <p className="text-xs text-center text-content-3">
-                Limits: 5 codes per 15 minutes · 6 verification attempts
-              </p>
-            </form>
+              </form>
+            )}
           </>
         ) : (
           <form

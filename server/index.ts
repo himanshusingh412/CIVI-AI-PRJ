@@ -14,8 +14,9 @@ import {
   AUTH_LIMITS,
 } from './auth.js';
 import { generateJson, providerStatus, Type } from './providers.js';
-import { emailStatus } from './email.js';
+import { emailStatus, maskEmail } from './email.js';
 import { verifyGoogleCredential, googleAuthStatus } from './google.js';
+import { verifyFirebaseIdToken, firebaseAdminStatus } from './firebase.js';
 import {
   csrfProtection,
   securityHeaders,
@@ -247,6 +248,37 @@ app.post('/api/auth/google', googleLimiter, async (req, res) => {
 
     const session = issueSession(result.maskedEmail, 'google', result.email);
     const csrf = setSessionCookies(res, session.token, session.expiresInSec);
+    return res.json({
+      ok: true,
+      identifier: session.identifier,
+      channel: session.channel,
+      expiresInSec: session.expiresInSec,
+      csrfToken: csrf,
+    });
+  } catch (err) {
+    return safeError(res, err);
+  }
+});
+
+app.post('/api/auth/firebase', googleLimiter, async (req, res) => {
+  try {
+    const idToken = String(req.body?.idToken || '');
+    const result = await constantTime(AUTH_TIME_FLOOR_MS, () =>
+      verifyFirebaseIdToken(idToken),
+    );
+
+    if (result.ok === false) return res.status(result.status).json(result);
+
+    const subject = result.email || result.phone || result.uid;
+    const masked = result.email ? maskEmail(result.email) : (result.phone || `uid:${result.uid.slice(0, 8)}...`);
+    // This endpoint now serves both the Firebase Google button and Firebase
+    // phone auth - report which one actually happened rather than assuming
+    // Google, so the channel isn't fabricated for the phone path.
+    const channel = result.phone && !result.email ? 'phone' : 'google';
+
+    const session = issueSession(masked, channel, subject);
+    const csrf = setSessionCookies(res, session.token, session.expiresInSec);
+
     return res.json({
       ok: true,
       identifier: session.identifier,

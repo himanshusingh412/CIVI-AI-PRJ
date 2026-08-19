@@ -1,0 +1,16 @@
+{
+  "auth": {
+    "providers": {
+      "anonymous": true,
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "CivicAI",
+        "authorizedRedirectUris": [
+          "http://localhost",
+          "http://localhost:3000",
+          "http://localhost:8787"
+        ]
+      }
+    }
+  }
+}

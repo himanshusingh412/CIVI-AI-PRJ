@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FirebaseUIProvider } from '@firebase-oss/ui-react';
 import { LoginScreen, type Audience } from '../components/LoginScreen';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { useAuth } from '../context/AuthContext';
+import { ui as firebaseUi } from '../lib/firebase';
 
 /**
  * Sign-in, for one audience at a time.
@@ -31,5 +33,15 @@ export function SignInPage({ audience }: { audience: Audience }) {
   // flashing the login form at someone who is already signed in.
   if (status === 'authenticated') return <LoadingScreen label="Signing you in…" />;
 
-  return <LoginScreen onSignedIn={onSignedIn} audience={audience} />;
+  const screen = <LoginScreen onSignedIn={onSignedIn} audience={audience} />;
+
+  // FirebaseUIProvider is scoped to the sign-in pages rather than the whole
+  // app - it's the only place FirebasePhoneAuthUI's <PhoneAuthForm> renders,
+  // and firebaseUi is null whenever VITE_FIREBASE_* isn't set, so there's
+  // nothing to provide for the (default, unconfigured) demo path.
+  return firebaseUi ? (
+    <FirebaseUIProvider ui={firebaseUi}>{screen}</FirebaseUIProvider>
+  ) : (
+    screen
+  );
 }

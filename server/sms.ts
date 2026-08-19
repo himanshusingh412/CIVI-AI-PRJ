@@ -83,21 +83,11 @@ export async function sendOtpSms(to: string, otp: string): Promise<SmsResult> {
     return { ok: true, provider: 'console' };
   }
 
-  try {
-    if (status.provider === 'msg91') {
-      const res = await fetch('https://control.msg91.com/api/v5/flow/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', authkey: MSG91() },
-        body: JSON.stringify({
-          template_id: process.env.MSG91_TEMPLATE_ID,
-          short_url: '0',
-          recipients: [{ mobiles: to.replace('+', ''), OTP: otp }],
-        }),
-      });
-      if (!res.ok) return { ok: false, provider: 'msg91', error: `HTTP ${res.status}` };
-      return { ok: true, provider: 'msg91' };
+  // Helper for Twilio delivery
+  const sendTwilio = async (): Promise<SmsResult> => {
+    if (!TWILIO_SID() || !TWILIO_TOKEN() || !TWILIO_FROM()) {
+      return { ok: false, provider: 'twilio', error: 'Twilio not configured' };
     }
-
     const auth = Buffer.from(`${TWILIO_SID()}:${TWILIO_TOKEN()}`).toString('base64');
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID()}/Messages.json`, {
       method: 'POST',
@@ -110,9 +100,50 @@ export async function sendOtpSms(to: string, otp: string): Promise<SmsResult> {
       return { ok: false, provider: 'twilio', error: `HTTP ${res.status}: ${errBody?.message || 'send_failed'}` };
     }
     return { ok: true, provider: 'twilio' };
+  };
+
+  try {
+    if (status.provider === 'msg91') {
+      const mobile = to.replace('+', '');
+      const templateId = process.env.MSG91_TEMPLATE_ID || '';
+      
+      let res: Response;
+      if (templateId) {
+        res = await fetch('https://control.msg91.com/api/v5/flow/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', authkey: MSG91() },
+          body: JSON.stringify({
+            template_id: templateId,
+            short_url: '0',
+            recipients: [{ mobiles: mobile, OTP: otp }],
+          }),
+        });
+      } else {
+        // Try MSG91 V5 direct OTP endpoint if template_id is not specified
+        res = await fetch(`https://control.msg91.com/api/v5/otp?mobile=${mobile}&otp=${otp}`, {
+          method: 'GET',
+          headers: { authkey: MSG91() },
+        });
+      }
+
+      if (res.ok) {
+        return { ok: true, provider: 'msg91' };
+      }
+
+      console.warn(`[sms] MSG91 HTTP ${res.status} failed, attempting Twilio fallback...`);
+      const twilioRes = await sendTwilio();
+      if (twilioRes.ok) return twilioRes;
+
+      return { ok: false, provider: 'msg91', error: `HTTP ${res.status}` };
+    }
+
+    return await sendTwilio();
   } catch (e: any) {
-    // Never surface provider errors to the caller: whether a send succeeded
-    // leaks whether the number is registered.
+    console.error('[sms] Send failure:', e?.message || e);
+    // Fallback attempt to Twilio if primary failed via exception
+    const twilioRes = await sendTwilio();
+    if (twilioRes.ok) return twilioRes;
+
     return { ok: false, provider: status.provider, error: e?.message ?? 'send_failed' };
   }
 }
