@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { modeOf } from './config.js';
+import { modeOf, isProduction } from './config.js';
 import { DOCUMENT_LABELS, EMPTY_FIELDS, type DocumentType, type ExtractedFields } from './ocr.js';
 
 /**
@@ -40,9 +40,21 @@ import { DOCUMENT_LABELS, EMPTY_FIELDS, type DocumentType, type ExtractedFields 
 
 const CLIENT_ID = () => process.env.DIGILOCKER_CLIENT_ID || '';
 const CLIENT_SECRET = () => process.env.DIGILOCKER_CLIENT_SECRET || '';
+/**
+ * The OAuth callback URL.
+ *
+ * Falls back to localhost, which is right in development and a silent
+ * deployment failure in production — the authorisation would complete on
+ * DigiLocker's side and then redirect the citizen to a machine that is not
+ * there. So production without PUBLIC_BASE_URL is reported rather than
+ * papered over: it surfaces in digilockerStatus() and therefore at
+ * /api/health, where an operator will actually see it.
+ */
 const REDIRECT_URI = () =>
   process.env.DIGILOCKER_REDIRECT_URI ||
   `${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/api/digilocker/callback`;
+
+const redirectUriIsLocal = () => /localhost|127\.0\.0\.1/.test(REDIRECT_URI());
 
 /** Production endpoints. Only reached when real credentials are configured. */
 const AUTHORIZE_ENDPOINT = 'https://digilocker.meripehchaan.gov.in/public/oauth2/1/authorize';
@@ -62,8 +74,17 @@ export type DigiLockerDocument = {
 
 export const digilockerStatus = () => {
   const mode = modeOf('digilocker');
+  const misconfiguredRedirect = isProduction() && redirectUriIsLocal();
+  if (misconfiguredRedirect) {
+    console.error(
+      '[digilocker] PUBLIC_BASE_URL is not set in production, so the OAuth callback ' +
+      'points at localhost. Authorisation will complete on DigiLocker and then fail ' +
+      'to return. Set PUBLIC_BASE_URL or DIGILOCKER_REDIRECT_URI.',
+    );
+  }
   return {
     mode,
+    misconfiguredRedirect,
     /** Never "connected" — that would imply a live session that does not exist. */
     label:
       mode === 'live' ? 'DigiLocker configured'

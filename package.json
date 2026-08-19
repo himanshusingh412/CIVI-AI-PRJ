@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "civicai",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -16,7 +16,10 @@
     "db:seed:dry": "node db/seed.mjs --dry",
     "db:reset": "node db/seed.mjs --reset",
     "db:drop": "node db/seed.mjs --drop",
-    "preview:web-only": "vite preview --port=3000"
+    "preview:web-only": "vite preview --port=3000",
+    "test": "tsx --test tests/*.test.ts",
+    "test:watch": "tsx --test --watch tests/*.test.ts",
+    "verify": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.4.0",
