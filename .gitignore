@@ -44,3 +44,4 @@ _probe.mjs
 
 # Files this sandbox could not unlink; safe to delete the whole folder.
 _to_delete/
+.vercel
