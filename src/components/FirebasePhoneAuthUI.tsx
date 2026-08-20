@@ -9,13 +9,82 @@ import {
   confirmFirebasePhoneOtp,
 } from '../lib/firebase';
 import { firebaseSignIn, isAuthError, validatePhone, type AuthUser } from '../services/authService';
+import { useI18n } from '../i18n/I18nContext';
 
 interface FirebasePhoneAuthUIProps {
   onSignedIn: (user: AuthUser) => void;
   onError?: (error: string) => void;
 }
 
+/**
+ * A Firebase *test* phone number and its fixed code, surfaced on screen so a
+ * demo does not depend on a real handset receiving a real SMS.
+ *
+ * Both values come from build-time config and default to empty, so a
+ * deployment that sets neither shows nothing. This is deliberately NOT
+ * inferred: the client cannot ask Firebase which numbers are test numbers,
+ * and guessing would risk printing something that looks like a live code.
+ *
+ * Why showing this is not a credential leak: a Firebase test number never
+ * receives an SMS and its code is a fixed value configured in the Firebase
+ * console — it is a shared demo credential, in the same category as seeded
+ * demo accounts, not a one-time secret. It is nonetheless revealed only once
+ * the visitor has already typed that exact number (see `showDemoHint`),
+ * rather than advertised to everyone who opens the page.
+ */
+const DEMO_PHONE = String((import.meta as any).env?.VITE_DEMO_PHONE ?? '').replace(/\D/g, '').slice(-10);
+const DEMO_OTP = String((import.meta as any).env?.VITE_DEMO_OTP ?? '').trim();
+
+/**
+ * The demo code, shown in place.
+ *
+ * Styled as a warning rather than as neutral help text on purpose. Anything
+ * that hands a working credential to whoever is looking at the screen should
+ * announce that it is a demo affordance — the failure mode to design against
+ * is a reviewer seeing a code appear and concluding the app prints real
+ * one-time passwords.
+ */
+const DemoCodeCallout: React.FC<{
+  code: string;
+  t: (k: any) => string;
+  onUse?: () => void;
+}> = ({ code, t, onUse }) => (
+  <div
+    className="mt-3 p-3 rounded-xl"
+    style={{
+      background: 'var(--color-warning-pale)',
+      border: '1px dashed var(--color-warning)',
+    }}
+  >
+    <p className="text-[11px] font-black uppercase tracking-widest mb-1" style={{ color: 'var(--color-warning)' }}>
+      {t('auth.demoOtpTitle')}
+    </p>
+    <p className="text-[11px] mb-2" style={{ color: 'var(--color-warning)' }}>
+      {t('auth.demoOtpBody')}
+    </p>
+    <div className="flex items-center gap-3 flex-wrap">
+      <code
+        className="text-xl font-bold font-mono tracking-[0.35em] px-3 py-1.5 rounded-lg"
+        style={{ background: 'var(--color-surface)', color: 'var(--color-content)' }}
+      >
+        {code}
+      </code>
+      {onUse && (
+        <button
+          type="button"
+          onClick={onUse}
+          className="press text-[12px] font-bold uppercase tracking-wider hover:underline"
+          style={{ color: 'var(--color-warning)' }}
+        >
+          {t('auth.otpCta')}
+        </button>
+      )}
+    </div>
+  </div>
+);
+
 export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSignedIn, onError }) => {
+  const { t } = useI18n();
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -191,6 +260,17 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
 
   const phoneValid = validatePhone(phone).ok;
 
+  /*
+   * Reveal the demo code only once the visitor has typed the demo number
+   * itself. Comparing on the last 10 digits matches how the number is
+   * normalised before it is sent to Firebase, so "09305727103",
+   * "+91 93057 27103" and "9305727103" all count as the same number here -
+   * otherwise the hint would fail to appear for exactly the formatting a
+   * person is most likely to use.
+   */
+  const showDemoHint =
+    !!DEMO_PHONE && !!DEMO_OTP && phone.replace(/\D/g, '').slice(-10) === DEMO_PHONE;
+
   return (
     <div className="w-full my-2">
       {/* Invisible reCAPTCHA container required by Firebase */}
@@ -211,7 +291,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
         <form className="space-y-4" onSubmit={handleSendOtp} noValidate>
           <div>
             <label htmlFor="firebase-phone" className="block text-[13px] font-semibold mb-1.5 text-content">
-              Mobile number (Firebase Real-Time OTP)
+              {t('auth.phoneLabel')}
             </label>
             <div className="relative">
               <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-content-3" size={18} aria-hidden="true" />
@@ -229,7 +309,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
                 autoComplete="tel-national"
                 maxLength={14}
                 required
-                placeholder="93057 27103"
+                placeholder={t('auth.phonePlaceholder')}
                 value={phone}
                 onChange={(e) => {
                   setPhone(e.target.value);
@@ -245,8 +325,10 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
               />
             </div>
             <p className="text-xs mt-1.5 text-content-3">
-              Enter your mobile number to receive a real-time SMS OTP via Firebase.
+              {t('auth.phoneHint')}
             </p>
+
+            {showDemoHint && <DemoCodeCallout code={DEMO_OTP} t={t} />}
           </div>
 
           <Button
@@ -254,9 +336,9 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
             fullWidth
             size="lg"
             disabled={loading || !phoneValid}
-            loadingText="Sending SMS via Firebase…"
+            loadingText={t('auth.phoneSending')}
           >
-            Send Real-Time OTP
+            {t('auth.phoneCta')}
             <ChevronRight size={18} aria-hidden="true" />
           </Button>
         </form>
@@ -265,7 +347,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label htmlFor="firebase-otp" className="block text-[13px] font-semibold text-content">
-                Firebase 6-digit code
+                {t('auth.otpLabel')}
               </label>
               <button
                 type="button"
@@ -273,7 +355,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
                 className="inline-flex items-center gap-1 text-xs font-medium text-cta hover:underline"
               >
                 <ArrowLeft size={12} />
-                Change number
+                {t('auth.changeNumber')}
               </button>
             </div>
             <input
@@ -300,8 +382,13 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
               }}
             />
             <p className="text-xs mt-1.5 text-center text-content-3">
-              Enter the SMS verification code sent to your phone.
+              {t('auth.otpHint')}
             </p>
+
+            {/* Repeated on the code step: this is where the number is
+                actually needed, and by now the visitor has navigated away
+                from where they first saw it. */}
+            {showDemoHint && <DemoCodeCallout code={DEMO_OTP} t={t} onUse={() => setOtp(DEMO_OTP)} />}
           </div>
 
           <Button
@@ -309,9 +396,9 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
             fullWidth
             size="lg"
             disabled={loading || otp.length !== 6}
-            loadingText="Verifying Firebase OTP…"
+            loadingText={t('auth.otpVerifying')}
           >
-            Verify & Sign In
+            {t('auth.otpCta')}
             <ChevronRight size={18} aria-hidden="true" />
           </Button>
 

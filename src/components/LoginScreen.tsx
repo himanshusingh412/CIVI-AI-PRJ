@@ -16,6 +16,7 @@ import {
 } from '../services/authService';
 import { isFirebaseConfigured, signInWithGoogleFirebase } from '../lib/firebase';
 import { FirebasePhoneAuthUI } from './FirebasePhoneAuthUI';
+import { useI18n } from '../i18n/I18nContext';
 
 /**
  * Build-time fallback. The authoritative value comes from GET /api/config at
@@ -48,6 +49,7 @@ export function LoginScreen({
   audience?: Audience;
 }) {
   const { isDark } = useTheme();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [audience, setAudience] = useState<Audience | null>(fixedAudience ?? null);
 
@@ -448,13 +450,13 @@ const GoogleIcon = () => (
             )}
           </div>
           <h1 className="font-display font-bold text-2xl tracking-tight text-content">
-            {audience === 'staff' ? 'Staff & admin sign-in' : 'Sign in to CivicAI'}
+            {audience === 'staff' ? t('auth.staffTitle') : t('auth.signIn')}
           </h1>
           <p className="text-sm mt-1.5 text-content-3">
             {step === 'identify'
               ? audience === 'staff'
-                ? 'For officers, department admins and system administrators'
-                : 'Continue with Google, or use a one-time SMS code'
+                ? t('auth.staffSub')
+                : t('auth.citizenSub')
               : 'Enter the code we texted you'}
           </p>
 
@@ -470,7 +472,7 @@ const GoogleIcon = () => (
                          tracking-wider text-content-3 hover:text-cta transition-colors"
             >
               <ArrowLeft size={13} aria-hidden="true" />
-              {fixedAudience ? (audience === 'staff' ? 'Back to home' : 'Not staff? Back to home') : 'Change'}
+              {fixedAudience ? (audience === 'staff' ? t('auth.backHome') : t('auth.notStaffBackHome')) : t('auth.change')}
             </button>
           )}
         </header>
@@ -527,7 +529,7 @@ const GoogleIcon = () => (
                     }}
                   >
                     <GoogleIcon />
-                    <span>Continue with Google</span>
+                    <span>{t('auth.googleCta')}</span>
                   </button>
                 )}
                 {googleBusy && (
@@ -548,7 +550,7 @@ const GoogleIcon = () => (
                   }}
                 >
                   <GoogleIcon />
-                  <span>Sign in with Firebase</span>
+                  <span>{t('auth.googleCta')}</span>
                 </button>
                 {googleBusy && (
                   <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in with Firebase…</p>
@@ -568,7 +570,7 @@ const GoogleIcon = () => (
                   }}
                 >
                   <GoogleIcon />
-                  <span>Continue with Google</span>
+                  <span>{t('auth.googleCta')}</span>
                 </button>
                 {googleBusy && (
                   <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in…</p>
@@ -579,7 +581,7 @@ const GoogleIcon = () => (
             {/* Divider */}
             <div className="flex items-center gap-3 my-5" aria-hidden="true">
               <span className="h-px flex-1" style={{ background: 'var(--color-border)' }} />
-              <span className="text-[11px] font-bold uppercase tracking-widest text-content-3">or</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-content-3">{t('auth.or')}</span>
               <span className="h-px flex-1" style={{ background: 'var(--color-border)' }} />
             </div>
 
@@ -820,7 +822,7 @@ const GoogleIcon = () => (
         >
           <ShieldCheck size={14} style={{ color: 'var(--color-success)' }} aria-hidden="true" />
           <span className="text-xs font-semibold text-content-3">
-            Government-verified · Codes are hashed, never stored in plain text
+            {t('auth.trustLine')}
           </span>
         </footer>
       </motion.main>

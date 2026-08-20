@@ -60,6 +60,36 @@ const en = {
   'auth.emailCta': 'Email me a code',
   'auth.or': 'OR',
 
+  // Sign-in chrome and the phone/OTP flow. These lived as literals in
+  // LoginScreen.tsx and FirebasePhoneAuthUI.tsx, which is why switching to
+  // Hindi left the whole sign-in card in English — the one screen every
+  // citizen must get through before anything else has been translated.
+  'auth.staffTitle': 'Staff & admin sign-in',
+  'auth.staffSub': 'For officers, department admins and system administrators',
+  'auth.citizenSub': 'Continue with Google, or use a one-time SMS code',
+  'auth.backHome': 'Back to home',
+  'auth.notStaffBackHome': 'Not staff? Back to home',
+  'auth.change': 'Change',
+  'auth.trustLine': 'Government-verified · Codes are hashed, never stored in plain text',
+
+  'auth.phoneLabel': 'Mobile number',
+  'auth.phonePlaceholder': '93057 27103',
+  'auth.phoneHint': 'We’ll text a 6-digit code to this number.',
+  'auth.phoneCta': 'Text me a code',
+  'auth.phoneSending': 'Sending code…',
+
+  'auth.otpLabel': '6-digit code',
+  'auth.otpHint': 'Enter the code we sent by SMS.',
+  'auth.otpCta': 'Verify & sign in',
+  'auth.otpVerifying': 'Verifying…',
+  'auth.changeNumber': 'Change number',
+
+  // Demo credential hint. Phrased as a test account rather than "your code",
+  // because it is neither secret nor delivered by SMS.
+  'auth.googleCta': 'Continue with Google',
+  'auth.demoOtpTitle': 'Demo test number',
+  'auth.demoOtpBody': 'A registered test number — no SMS is sent. Use the code below.',
+
   'empty.noComplaints': 'No complaints found matching your criteria.',
   'lang.label': 'Language',
 
@@ -181,6 +211,26 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'auth.signIn': 'साइन इन करें', 'auth.emailLabel': 'ईमेल पता',
     'auth.emailHint': 'हम 6 अंकों का कोड भेजेंगे। पासवर्ड की आवश्यकता नहीं।',
     'auth.emailCta': 'मुझे कोड भेजें', 'auth.or': 'या',
+    'auth.staffTitle': 'कर्मचारी और प्रशासक साइन इन',
+    'auth.staffSub': 'अधिकारियों, विभागीय प्रशासकों और सिस्टम प्रशासकों के लिए',
+    'auth.citizenSub': 'Google से जारी रखें, या एक बार का एसएमएस कोड उपयोग करें',
+    'auth.backHome': 'मुखपृष्ठ पर लौटें',
+    'auth.notStaffBackHome': 'कर्मचारी नहीं हैं? मुखपृष्ठ पर लौटें',
+    'auth.change': 'बदलें',
+    'auth.trustLine': 'सरकार-सत्यापित · कोड हैश किए जाते हैं, कभी सादे रूप में संग्रहीत नहीं',
+    'auth.phoneLabel': 'मोबाइल नंबर',
+    'auth.phonePlaceholder': '93057 27103',
+    'auth.phoneHint': 'हम इस नंबर पर 6 अंकों का कोड भेजेंगे।',
+    'auth.phoneCta': 'मुझे कोड भेजें',
+    'auth.phoneSending': 'कोड भेजा जा रहा है…',
+    'auth.otpLabel': '6 अंकों का कोड',
+    'auth.otpHint': 'एसएमएस से भेजा गया कोड दर्ज करें।',
+    'auth.otpCta': 'सत्यापित करें और साइन इन करें',
+    'auth.otpVerifying': 'सत्यापित किया जा रहा है…',
+    'auth.changeNumber': 'नंबर बदलें',
+    'auth.googleCta': 'Google से जारी रखें',
+    'auth.demoOtpTitle': 'डेमो परीक्षण नंबर',
+    'auth.demoOtpBody': 'यह एक पंजीकृत परीक्षण नंबर है — कोई एसएमएस नहीं भेजा जाता। नीचे दिया कोड उपयोग करें।',
     'empty.noComplaints': 'आपके मापदंडों से मेल खाती कोई शिकायत नहीं मिली।', 'lang.label': 'भाषा',
   },
 
