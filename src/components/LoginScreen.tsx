@@ -424,23 +424,44 @@ const GoogleIcon = () => (
         className="surface bordered rounded-2xl p-7 sm:p-9 w-full max-w-md shadow-2xl relative z-10"
       >
         <header className="text-center mb-7">
+          {/*
+           * Same iconography and colour split as the audience chooser above
+           * (User/cta for citizens, Building2/saffron for staff) so the two
+           * doors are visually distinct from the very first frame - not just
+           * different copy, but a different mark and a different accent.
+           * This is purely presentational: which door you used no longer
+           * decides where you land after sign-in (see SignInPage.tsx), so
+           * this header is the one remaining place "which portal am I in"
+           * is communicated to a person rather than decided for them.
+           */}
           <div
             aria-hidden="true"
-            className="float-y w-14 h-14 rounded-xl grid place-items-center mx-auto mb-4 text-white shadow-lg bg-gradient-to-br from-cta to-saffron"
+            className={
+              'float-y w-14 h-14 rounded-xl grid place-items-center mx-auto mb-4 text-white shadow-lg bg-gradient-to-br ' +
+              (audience === 'staff' ? 'from-saffron to-saffron-light' : 'from-cta to-cta-hover')
+            }
           >
-            <ShieldCheck size={28} strokeWidth={2} />
+            {audience === 'staff' ? (
+              <Building2 size={28} strokeWidth={2} />
+            ) : (
+              <ShieldCheck size={28} strokeWidth={2} />
+            )}
           </div>
           <h1 className="font-display font-bold text-2xl tracking-tight text-content">
-            {audience === 'staff' ? 'Staff sign-in' : 'Sign in to CivicAI'}
+            {audience === 'staff' ? 'Staff & admin sign-in' : 'Sign in to CivicAI'}
           </h1>
           <p className="text-sm mt-1.5 text-content-3">
             {step === 'identify'
-              ? 'Continue with Google, or use a one-time SMS code'
+              ? audience === 'staff'
+                ? 'For officers, department admins and system administrators'
+                : 'Continue with Google, or use a one-time SMS code'
               : 'Enter the code we texted you'}
           </p>
 
-          {/* Escape hatch back to the chooser. On the admin portal this links
-              to the citizen app instead, because there is no chooser there. */}
+          {/* Escape hatch back to the chooser. On a fixed-audience door
+              (there is no in-page chooser there) this links to the landing
+              page instead - labelled per audience, since "Citizen sign-in"
+              on the STAFF page pointed at the wrong door entirely. */}
           {step === 'identify' && (
             <button
               type="button"
@@ -449,7 +470,7 @@ const GoogleIcon = () => (
                          tracking-wider text-content-3 hover:text-cta transition-colors"
             >
               <ArrowLeft size={13} aria-hidden="true" />
-              {fixedAudience ? 'Citizen sign-in' : 'Change'}
+              {fixedAudience ? (audience === 'staff' ? 'Back to home' : 'Not staff? Back to home') : 'Change'}
             </button>
           )}
         </header>
