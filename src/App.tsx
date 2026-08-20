@@ -164,7 +164,13 @@ export default function App() {
     refresh: refreshComplaints,
     patch: patchComplaint,
     prepend: prependComplaint,
-  } = useLiveComplaints({ limit: 300 });
+    // `mine` matters here. Every surface this feeds — the stat tiles, Recent
+    // history, Track — is presented to the citizen as THEIR cases. Without
+    // it the endpoint returns the public civic feed, so the dashboard
+    // counted the entire country's complaints and listed strangers' report
+    // descriptions under the signed-in user's own history. See the note on
+    // GET /api/complaints in server/complaints.ts.
+  } = useLiveComplaints({ limit: 300, mine: true });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [chatStep, setChatStep] = useState<string | null>(null);

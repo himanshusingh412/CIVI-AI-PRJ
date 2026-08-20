@@ -10,7 +10,7 @@ import { apiGet, apiPost, isAuthError, type AuthError } from './authService';
 
 export type Role =
   | 'super_admin' | 'state_admin' | 'district_admin'
-  | 'department_officer' | 'field_officer' | 'auditor';
+  | 'department_officer' | 'area_officer' | 'field_officer' | 'auditor';
 
 export type Permission = string;
 

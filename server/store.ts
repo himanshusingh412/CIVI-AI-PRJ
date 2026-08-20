@@ -211,6 +211,39 @@ export async function seedDemoData() {
       description: 'Streetlights out, unsafe at night near the bus depot.', state: 'Delhi',
       district: 'New Delhi', department: 'Police Department', status: 'department_assigned',
       priority: 'High', lat: 28.6280, lng: 77.2190 },
+
+    // ── ward-scoped rows, one per demo area officer ──
+    //
+    // The five rows above predate the ward dimension: they carry no ward and
+    // sit in districts no area officer is posted to, so every area officer
+    // signing in saw an empty queue. That was the CORRECT answer — scope
+    // filtering failing closed — but an empty screen is indistinguishable
+    // from a broken one, and "the isolation works, trust me" is exactly the
+    // claim a demo ought to be able to disprove.
+    //
+    // These three make it observable. Electricity and Water are pinned to
+    // the SAME state and district and differ only by ward, so signing in as
+    // the Ward 12 officer and finding the Ward 15 complaint absent proves
+    // the ward constraint specifically — not the department or district
+    // constraint that already existed. Transport differs on district too,
+    // covering the coarser boundary in the same fixture.
+    { citizenName: 'Deepa Menon', citizenPhone: '9600011111', category: 'Electricity',
+      description: 'Transformer sparking near the Ward 12 market since last night.',
+      state: 'Delhi', district: 'District A', ward: 'Ward 12',
+      department: 'Electricity Board', status: 'officer_assigned', priority: 'Critical',
+      lat: 28.6139, lng: 77.2090 },
+
+    { citizenName: 'Vikram Bose', citizenPhone: '9600022222', category: 'Water Supply',
+      description: 'Pipeline leakage flooding the Ward 15 approach road.',
+      state: 'Delhi', district: 'District A', ward: 'Ward 15',
+      department: 'Water Department', status: 'department_assigned', priority: 'High',
+      lat: 28.6200, lng: 77.2150 },
+
+    { citizenName: 'Meera Pillai', citizenPhone: '9600033333', category: 'Roads & Transport',
+      description: 'Bus shelter collapsed at the Ward 4 depot stop.',
+      state: 'Delhi', district: 'District B', ward: 'Ward 4',
+      department: 'Transport Department', status: 'submitted', priority: 'Medium',
+      lat: 28.7041, lng: 77.1025 },
   ];
 
   for (const r of rows) {

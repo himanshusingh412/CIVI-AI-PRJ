@@ -110,7 +110,14 @@ function AccessRefused() {
 export const ROLE_GROUPS = {
   admin: ['super_admin', 'state_admin', 'auditor'] as const,
   department: ['district_admin', 'department_officer', 'super_admin', 'state_admin'] as const,
-  officer: ['field_officer', 'department_officer', 'district_admin', 'super_admin', 'state_admin'] as const,
+  // area_officer belongs here rather than under `department`: their home
+  // route is the officer workspace (a queue) rather than the department
+  // dashboard (an analytics overview). Leaving them out was a real defect,
+  // not a cosmetic one — the server authorised an area officer and returned
+  // their correctly scoped queue, while this list refused to render the
+  // screen that displays it, so the role was unusable end to end even though
+  // every server-side check passed.
+  officer: ['area_officer', 'field_officer', 'department_officer', 'district_admin', 'super_admin', 'state_admin'] as const,
 };
 
 /**

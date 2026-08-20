@@ -14,6 +14,7 @@ export type StaffRole =
   | 'state_admin'
   | 'district_admin'
   | 'department_officer'
+  | 'area_officer'
   | 'field_officer'
   | 'auditor';
 
@@ -55,6 +56,7 @@ export const ROLE_LABELS: Record<IdentityRole, string> = {
   state_admin: 'State Administrator',
   district_admin: 'District Administrator',
   department_officer: 'Department Officer',
+  area_officer: 'Area Officer',
   field_officer: 'Field Officer',
   auditor: 'Auditor',
 };

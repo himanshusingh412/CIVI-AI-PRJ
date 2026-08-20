@@ -40,6 +40,16 @@ export interface ComplaintFilters {
   category?: string;
   status?: string;
   limit?: number;
+  /**
+   * Restrict the result to complaints this session actually filed.
+   *
+   * Without it the endpoint answers with the public civic feed — right for a
+   * "what's happening near me" view, wrong for anything presented as the
+   * citizen's own cases. The server matches on the session's subject hash,
+   * so this narrows the result without granting anything: it cannot be
+   * aimed at another person's list.
+   */
+  mine?: boolean;
 }
 
 export async function listComplaints(f: ComplaintFilters = {}): Promise<Complaint[]> {

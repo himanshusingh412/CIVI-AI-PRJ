@@ -60,24 +60,63 @@ function toPublic(c: Complaint) {
 
 /**
  * GET /api/complaints?state=Delhi&district=New%20Delhi&limit=200
+ * GET /api/complaints?mine=true
  *
  * Filtering happens server-side so a district query does not ship the whole
  * national dataset to a phone in order to discard 95% of it.
+ *
+ * ── on `mine` ──
+ *
+ * This endpoint answers two genuinely different questions, and was serving
+ * both with one response:
+ *
+ *   "what is happening in my area?" → the civic transparency feed, public by
+ *                                     design, already stripped of contact
+ *                                     details by toPublic()
+ *   "what did *I* file?"            → one citizen's own case list
+ *
+ * The citizen dashboard asks the second and was handed the first, so a
+ * signed-in user's "Total Applications" tile counted every complaint in the
+ * country and their "Recent history" listed strangers' reports — including
+ * the free-text description the stranger wrote. Contact fields were masked,
+ * but a description is written by someone assuming only officials will read
+ * it, so this disclosed more than the field list suggests.
+ *
+ * `citizenSubjectHash` has been recorded at creation from the session all
+ * along and simply never used. It is matched against the SESSION's hash, not
+ * anything the client sends, so there is no parameter here that can be
+ * pointed at somebody else's case list.
  */
 complaintsRouter.get('/', async (req, res) => {
   const { state, district, category, status } = req.query as Record<string, string | undefined>;
   const limit = Math.min(Number(req.query.limit) || 200, 500);
+  const mineOnly = String(req.query.mine || '') === 'true';
 
   const eq = (a?: string, b?: string) =>
     !b || String(a ?? '').toLowerCase() === b.toLowerCase();
 
+  const subjectHash = (req as any).session?.subjectHash;
+  // An unauthenticated caller asking for "mine" has no identity to match on,
+  // so the honest answer is an empty list. Quietly falling back to the
+  // public feed here is exactly the substitution that caused the bug this
+  // parameter exists to fix.
+  if (mineOnly && !subjectHash) {
+    return res.json({ count: 0, total: 0, complaints: [] });
+  }
+
   const all = await store.list();
-  const rows = all
+  const scoped = mineOnly
+    ? all.filter(c => c.citizenSubjectHash && c.citizenSubjectHash === subjectHash)
+    : all;
+
+  const rows = scoped
     .filter(c => eq(c.state, state) && eq(c.district, district) &&
                  eq(c.category, category) && eq(c.status as string, status))
     .slice(0, limit);
 
-  res.json({ count: rows.length, total: all.length, complaints: rows.map(toPublic) });
+  // `total` must describe the same population as `complaints`; otherwise a
+  // "showing 1 of 8" reading appears on a screen only ever allowed to show 1.
+  res.json({ count: rows.length, total: scoped.length, complaints: rows.map(toPublic) });
 });
 
 /** Full record for one complaint, by its CIV- reference. */
