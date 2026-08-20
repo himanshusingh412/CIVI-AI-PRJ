@@ -9,7 +9,6 @@
    declare that mapping so any `dark:` utility (ours or a dependency's, e.g.
    FirebaseUI below) follows the in-app toggle instead of the OS setting. */
 @custom-variant dark (&:where(.dark, .dark *));
-@import "@firebase-oss/ui-styles/tailwind";
 @import "leaflet/dist/leaflet.css";
 
 @theme {
@@ -187,25 +186,6 @@
   --shadow-2: 0 4px 14px rgb(0 0 0 / 0.55);
   --shadow-3: 0 12px 34px rgb(0 0 0 / 0.62);
   --shadow-4: 0 24px 64px rgb(0 0 0 / 0.7);
-}
-
-/* FirebaseUI-for-Web theming (@firebase-oss/ui-styles/tailwind, imported
-   above). Points its --fui-* tokens at CivicAI's own semantic colors -
-   already per-theme via `.dark` above - rather than the library's default
-   plain black/white, so the phone sign-in form (FirebasePhoneAuthUI.tsx)
-   reads as part of the product instead of a bolted-on widget. */
-:root {
-  --fui-primary: var(--color-cta);
-  --fui-primary-hover: var(--color-cta-hover);
-  --fui-primary-surface: #ffffff;
-  --fui-text: var(--color-content);
-  --fui-text-muted: var(--color-content-3);
-  --fui-background: var(--color-surface);
-  --fui-border: var(--color-border-strong);
-  --fui-input: var(--color-border-strong);
-  --fui-error: var(--color-danger);
-  --fui-radius: var(--radius-sm);
-  --fui-radius-card: var(--radius-xl);
 }
 
 @layer base {

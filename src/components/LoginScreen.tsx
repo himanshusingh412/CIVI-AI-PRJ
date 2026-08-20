@@ -701,7 +701,7 @@ const GoogleIcon = () => (
               >
                 <p className="text-[11px] font-black uppercase tracking-widest mb-2"
                    style={{ color: 'var(--color-warning)' }}>
-                  SMS not configured · development only
+                  Development OTP Mode
                 </p>
                 <div className="flex items-center gap-3 flex-wrap">
                   <code
@@ -720,7 +720,7 @@ const GoogleIcon = () => (
                   </button>
                 </div>
                 <p className="text-[11px] mt-2" style={{ color: 'var(--color-warning)' }}>
-                  Set MSG91_AUTH_KEY or TWILIO_* in .env to receive real SMS instead.
+                  Set AUTH_DEV_OTP=false in .env to rely on real SMS delivery.
                 </p>
               </div>
             )}

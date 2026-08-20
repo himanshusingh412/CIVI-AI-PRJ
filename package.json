@@ -23,10 +23,6 @@
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.4.0",
-    "@firebase-oss/ui-core": "^7.1.0",
-    "@firebase-oss/ui-react": "^7.1.0",
-    "@firebase-oss/ui-styles": "^7.1.0",
-    "@firebase-oss/ui-translations": "^7.1.0",
     "@google/genai": "^1.29.0",
     "@neondatabase/serverless": "^1.1.0",
     "@tailwindcss/vite": "^4.1.14",

@@ -7,10 +7,12 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
   type Auth,
   type User,
+  type ConfirmationResult,
 } from 'firebase/auth';
-import { initializeUI, countryCodes, type FirebaseUIStore } from '@firebase-oss/ui-core';
 
 const firebaseConfig = {
   apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || '',
@@ -31,13 +33,6 @@ export const isFirebaseConfigured = (): boolean => {
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
-/**
- * FirebaseUI-for-Web's instance (@firebase-oss/ui-core). Only <PhoneAuthForm>
- * consumes this today (see FirebasePhoneAuthUI.tsx), but it's created once
- * here alongside `app`/`auth` so every screen shares a single instance
- * instead of each caller standing up its own.
- */
-let ui: FirebaseUIStore | null = null;
 
 if (typeof window !== 'undefined') {
   try {
@@ -46,22 +41,22 @@ if (typeof window !== 'undefined') {
       auth = getAuth(app);
       // Automatically use device default language preference
       auth.useDeviceLanguage();
-      ui = initializeUI({
-        app,
-        behaviors: [
-          countryCodes({
-            defaultCountry: 'IN',
-            allowedCountries: ['IN', 'US', 'GB'],
-          }),
-        ],
-      });
     }
   } catch (err) {
     console.warn('[firebase] Initialization warning:', err);
   }
 }
 
-export { app, auth, ui };
+/**
+ * Disable app verification (reCAPTCHA) for automated testing or development with test numbers.
+ */
+export function setAppVerificationDisabledForTesting(disabled: boolean) {
+  if (auth) {
+    auth.settings.appVerificationDisabledForTesting = disabled;
+  }
+}
+
+export { app, auth };
 
 export const googleProvider = new GoogleAuthProvider();
 
@@ -92,11 +87,42 @@ export async function signUpWithEmailFirebase(email: string, pass: string) {
   return { user: result.user, idToken };
 }
 
-// Phone auth (reCAPTCHA + signInWithPhoneNumber + code confirmation) used to
-// be hand-rolled here. It's now handled by @firebase-oss/ui-react's
-// <PhoneAuthForm>, wired up in FirebasePhoneAuthUI.tsx - that library owns
-// its own reCAPTCHA lifecycle via the `ui` instance above, so there's
-// nothing left for this file to do for phone sign-in.
+/**
+ * Initialize a RecaptchaVerifier instance for Firebase Phone Auth.
+ */
+export function initRecaptchaVerifier(containerId: string, size: 'invisible' | 'normal' = 'invisible'): RecaptchaVerifier {
+  if (!auth) {
+    throw new Error('Firebase Auth is not configured.');
+  }
+  return new RecaptchaVerifier(auth, containerId, {
+    size,
+    callback: () => {
+      // reCAPTCHA solved
+    },
+    'expired-callback': () => {
+      console.warn('[firebase] reCAPTCHA expired, please try again.');
+    },
+  });
+}
+
+/**
+ * Send a real-time SMS OTP to a phone number via Firebase Auth.
+ */
+export async function sendFirebasePhoneOtp(phoneNumber: string, appVerifier: RecaptchaVerifier): Promise<ConfirmationResult> {
+  if (!auth) {
+    throw new Error('Firebase Auth is not configured.');
+  }
+  return await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+}
+
+/**
+ * Confirm the OTP code sent via real-time SMS.
+ */
+export async function confirmFirebasePhoneOtp(confirmationResult: ConfirmationResult, code: string) {
+  const result = await confirmationResult.confirm(code);
+  const idToken = await result.user.getIdToken();
+  return { user: result.user, idToken };
+}
 
 export async function signOutFirebase() {
   if (auth) {
