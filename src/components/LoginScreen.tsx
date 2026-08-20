@@ -590,7 +590,20 @@ const GoogleIcon = () => (
               // it calls completeSignIn directly on success.
               <FirebasePhoneAuthUI
                 onSignedIn={u => completeSignIn(u.identifier, u.channel)}
-                onError={setError}
+                /*
+                 * Deliberately NOT onError={setError}.
+                 *
+                 * FirebasePhoneAuthUI already renders every one of these
+                 * messages inline, directly above the field they concern.
+                 * Feeding the same string into LoginScreen's banner too
+                 * printed it twice on one screen - once detached at the top
+                 * of the card, once in place - which reads as two separate
+                 * failures rather than one. The inline copy is the better
+                 * one to keep: it sits next to the input the person has to
+                 * change. The callback stays on the component's props for
+                 * callers that want to observe failures without displaying
+                 * them.
+                 */
               />
             ) : (
               <form

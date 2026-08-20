@@ -114,9 +114,30 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
       console.error('[Firebase Phone Auth] Error sending OTP:', err);
       let msg = err?.message || 'Failed to send SMS OTP via Firebase.';
       if (err?.code === 'auth/operation-not-allowed' || msg.includes('region enabled')) {
-        msg = 'Phone Auth / SMS Region is not enabled. Go to Firebase Console -> Authentication -> Settings -> SMS region policy and allow India (+91), or add test phone numbers.';
+        /*
+         * This is a DEPLOYMENT misconfiguration (SMS region policy), not
+         * anything the person signing in did or can fix. The previous copy
+         * put "Go to Firebase Console -> Authentication -> Settings" on a
+         * citizen's screen: it names internal infrastructure, reads as if
+         * they had got something wrong, and prescribes an action only an
+         * operator can take. The actionable detail belongs in the console
+         * where an operator will actually see it; the screen gets a plain
+         * statement and a route that still works.
+         */
+        console.error(
+          '[Firebase Phone Auth] SMS delivery refused for this region. ' +
+          'Firebase Console → Authentication → Settings → SMS region policy: ' +
+          'allow India (IN), or register a test phone number.',
+        );
+        msg = 'SMS sign-in is temporarily unavailable. Please continue with Google, or try again shortly.';
       } else if (msg.includes('already been rendered')) {
-        msg = 'reCAPTCHA reset. Please click "Send Real-Time OTP" again.';
+        msg = 'Verification reset — please tap “Send Real-Time OTP” again.';
+      } else if (err?.code === 'auth/invalid-phone-number') {
+        msg = 'That mobile number doesn’t look right. Enter a 10-digit Indian number.';
+      } else if (err?.code === 'auth/too-many-requests') {
+        msg = 'Too many attempts from this device. Please wait a few minutes before trying again.';
+      } else if (err?.code === 'auth/quota-exceeded') {
+        msg = 'SMS sign-in is busy right now. Please continue with Google, or try again shortly.';
       }
       setError(msg);
       onError?.(msg);
