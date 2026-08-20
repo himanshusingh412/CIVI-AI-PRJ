@@ -14,6 +14,7 @@ import { resolveStaff, toPrincipal, homeRouteFor } from './staff.js';
 import { tokenFromRequest, safeError } from './security.js';
 import { ipOf } from './rateLimit.js';
 import { notify, type NotificationEvent } from './notifications.js';
+import { runSlaSweep } from './sla.js';
 
 /**
  * Admin API. Every route is guarded by `requirePermission`, which checks
@@ -398,5 +399,47 @@ adminRouter.get('/audit', requirePermission('audit:read'), (req, res) => {
         limit: limit ? Number(limit) : undefined,
       }),
     });
+  } catch (err) { return safeError(res, err); }
+});
+
+// ───────────────────────── SLA sweep (operator-driven) ─────────────────────────
+/**
+ * Re-evaluate SLA breaches on demand.
+ *
+ * Previously reachable at this same path with nothing but `requireAuth`,
+ * because the route was registered on the app rather than on this router —
+ * which meant any signed-in citizen could trigger a nationwide escalation
+ * pass and read the resulting breach list. See the note on
+ * POST /api/internal/sla/sweep in server/index.ts for the scheduler-facing
+ * half of the split.
+ *
+ * Two things are enforced here that were not before. The sweep itself is a
+ * mutation, so it demands `complaint:escalate` rather than mere
+ * authentication. And the RESULT is jurisdictional data: `SlaBreach` carries
+ * only a complaint id, so returning the raw list would tell a District A
+ * officer exactly which District B complaints are running late. The response
+ * is therefore intersected with the caller's visible set.
+ *
+ * `escalated` is deliberately the global count while `breaches` is the
+ * scoped subset — the operator is told the sweep did more work than they can
+ * see, rather than being quietly shown a smaller number that looks like the
+ * whole picture.
+ */
+adminRouter.post('/sla/sweep', requirePermission('complaint:escalate'), async (req, res) => {
+  try {
+    const principal = principalOf(req);
+    const breaches = await runSlaSweep();
+
+    const visibleIds = new Set(visibleTo(principal, await store.list()).map(c => c.id));
+    const scoped = breaches.filter(b => visibleIds.has(b.id));
+
+    audit({
+      actor: principal, action: 'complaint:escalate', targetType: 'system',
+      targetId: 'sla:sweep',
+      detail: { escalatedTotal: breaches.length, visibleToCaller: scoped.length },
+      ip: ipOf(req),
+    });
+
+    res.json({ ok: true, escalated: breaches.length, breaches: scoped });
   } catch (err) { return safeError(res, err); }
 });

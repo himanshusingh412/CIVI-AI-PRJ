@@ -21,6 +21,13 @@ export const ROLES = [
   'state_admin',
   'district_admin',
   'department_officer',
+  // Local-area officer: department + district + a single ward. Deliberately
+  // distinct from field_officer, whose scope is "complaints assigned to me
+  // personally" wherever they happen to be. An area officer owns a PLACE,
+  // not a worklist - they see everything in their ward for their department,
+  // including complaints nobody has been handed yet, which is precisely what
+  // makes ward-level triage possible at all.
+  'area_officer',
   'field_officer',
   'auditor',
 ] as const;
@@ -76,6 +83,15 @@ const CAPABILITIES: Record<Role, Permission[]> = {
     'complaint:note', 'complaint:upload', 'analytics:read',
   ],
 
+  // Area officers triage their ward: they can move work forward and hand it
+  // to a field officer within their own ward, but - like every role below
+  // district - they cannot close a case, because closure requires citizen
+  // confirmation rather than an official's say-so.
+  area_officer: [
+    'complaint:read', 'complaint:update_status', 'complaint:assign', 'complaint:escalate',
+    'complaint:note', 'complaint:upload', 'analytics:read',
+  ],
+
   // Field officers act on their own assignments only; they cannot hand work
   // to someone else or close a case (closure requires citizen verification).
   field_officer: [
@@ -85,11 +101,21 @@ const CAPABILITIES: Record<Role, Permission[]> = {
   auditor: READ_ONLY,
 };
 
-/** A user's jurisdiction. `undefined` means "unrestricted at this level". */
+/**
+ * A user's jurisdiction. `undefined` means "unrestricted at this level".
+ *
+ * `ward` is the local-area dimension. It is the narrowest geographic
+ * constraint and composes with the ones above it rather than replacing them:
+ * a principal scoped to {department: 'water', district: 'D-A', ward: 'W-15'}
+ * must match on all three. Note the asymmetry with `officerId` - ward is a
+ * property of the PLACE a complaint concerns, officerId is a property of who
+ * is carrying it, and a role may be constrained by either or both.
+ */
 export type Scope = {
   state?: string;
   district?: string;
   department?: string;
+  ward?: string;
   officerId?: string;
 };
 
@@ -105,6 +131,7 @@ export type ScopedRecord = {
   state?: string;
   district?: string;
   department?: string;
+  ward?: string;
   assignedOfficerId?: string;
 };
 
@@ -127,11 +154,19 @@ export function inScope(principal: Principal, record: ScopedRecord): boolean {
   if (scope.state && record.state !== scope.state) return false;
   if (scope.district && record.district !== scope.district) return false;
   if (scope.department && record.department !== scope.department) return false;
+  if (scope.ward && record.ward !== scope.ward) return false;
 
   if (role === 'field_officer') {
     if (!scope.officerId) return false; // misconfigured principal → deny
     if (record.assignedOfficerId !== scope.officerId) return false;
   }
+
+  // An area officer with no ward is a misconfiguration, and the safe reading
+  // of "local-area officer with no local area" is zero records, not every
+  // record. Without this the empty-scope wildcard above would silently
+  // promote them to seeing their whole department - the exact failure mode
+  // the field_officer branch already guards against.
+  if (role === 'area_officer' && !scope.ward) return false;
 
   return true;
 }
@@ -161,7 +196,7 @@ export function visibleTo<T extends ScopedRecord>(principal: Principal, records:
  * that need them to actually do the work — auditors and analytics consumers
  * get masked values, satisfying data-minimisation.
  */
-const CONTACT_VISIBLE: Role[] = ['super_admin', 'state_admin', 'district_admin', 'department_officer', 'field_officer'];
+const CONTACT_VISIBLE: Role[] = ['super_admin', 'state_admin', 'district_admin', 'department_officer', 'area_officer', 'field_officer'];
 
 export const canSeeContactDetails = (principal: Principal): boolean =>
   CONTACT_VISIBLE.includes(principal.role);

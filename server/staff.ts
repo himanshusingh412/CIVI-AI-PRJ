@@ -83,6 +83,10 @@ export const HOME_ROUTES: Record<Role | 'citizen', string> = {
   auditor: '/portal/admin',
   district_admin: '/portal/department',
   department_officer: '/portal/department',
+  // Area officers work a queue, not an analytics overview, so they land on
+  // the officer workspace alongside field officers rather than the
+  // department dashboard.
+  area_officer: '/portal/officer',
   field_officer: '/portal/officer',
   citizen: '/portal',
 };
@@ -121,6 +125,7 @@ const DB_ROLE_MAP: Record<string, Role> = {
   'State Admin': 'state_admin',
   'District Admin': 'district_admin',
   'Department Officer': 'department_officer',
+  'Area Officer': 'area_officer',
   'Field Officer': 'field_officer',
   'Auditor': 'auditor',
 };
@@ -154,6 +159,10 @@ async function fromDatabase(subjectHash: string): Promise<StaffRecord | null> {
               u.district            AS district,
               r.role_name           AS role_name,
               d.name                AS department,
+              -- Ward comes from the OFFICER row, not the user row: it is a
+              -- posting, not a personal attribute, and an officer can be
+              -- reposted to another ward without their identity changing.
+              o.assigned_ward       AS ward,
               o.id::text            AS officer_id
          FROM users u
          JOIN roles r        ON r.id = u.role_id
@@ -187,6 +196,7 @@ async function fromDatabase(subjectHash: string): Promise<StaffRecord | null> {
         state: row.state || undefined,
         district: row.district || undefined,
         department: row.department || undefined,
+        ward: row.ward || undefined,
         officerId: row.officer_id || undefined,
       }),
       status: row.status === 'active' ? 'active' : 'suspended',
@@ -219,6 +229,18 @@ function scopeFor(role: Role, raw: Scope): Scope {
       return { state: raw.state, district: raw.district };
     case 'department_officer':
       return { state: raw.state, department: raw.department };
+    // The narrowest geographic role: department AND district AND ward all
+    // constrain at once. Dropping any one of them here would widen the
+    // officer's reach without anything in the request looking wrong - e.g.
+    // omitting `district` would let a Ward 12 officer in District A also see
+    // District B's Ward 12, because ward identifiers repeat across districts.
+    case 'area_officer':
+      return {
+        state: raw.state,
+        district: raw.district,
+        department: raw.department,
+        ward: raw.ward,
+      };
     case 'field_officer':
       return { officerId: raw.officerId };
     default:
@@ -246,6 +268,7 @@ type EnvStaffEntry = {
   state?: string;
   district?: string;
   department?: string;
+  ward?: string;
   officerId?: string;
 };
 
@@ -285,7 +308,7 @@ function fromEnvDirectory(subjectHash: string): StaffRecord | null {
       role: e.role,
       scope: scopeFor(e.role, {
         state: e.state, district: e.district,
-        department: e.department, officerId: e.officerId,
+        department: e.department, ward: e.ward, officerId: e.officerId,
       }),
       status: 'active',
       source: 'env',
@@ -314,6 +337,17 @@ export const DEMO_STAFF: Array<{ phone: string; record: Omit<StaffRecord, 'sourc
   { phone: '9000000004', record: { id: 'demo-dept',     displayName: 'Demo Water Dept Officer', role: 'department_officer', scope: { state: 'Delhi', department: 'Water Department' }, status: 'active' } },
   { phone: '9000000005', record: { id: 'demo-field',    displayName: 'Demo Field Officer',      role: 'field_officer',      scope: { officerId: 'off-1' },                             status: 'active' } },
   { phone: '9000000006', record: { id: 'demo-auditor',  displayName: 'Demo Read-only Auditor',  role: 'auditor',            scope: {},                                                 status: 'active' } },
+
+  // Three area officers that make ward isolation demonstrable rather than
+  // merely asserted. Electricity and Water sit in the SAME district on
+  // purpose, differing only by ward - so signing in as one and finding the
+  // other's complaint missing proves the ward dimension is doing the work,
+  // not the district or department dimension that already existed. Transport
+  // differs on district as well, covering the coarser boundary at the same
+  // time.
+  { phone: '9000000007', record: { id: 'demo-area-elec',  displayName: 'Demo Electricity Officer · Ward 12', role: 'area_officer', scope: { state: 'Delhi', district: 'District A', department: 'Electricity Board',  ward: 'Ward 12' }, status: 'active' } },
+  { phone: '9000000008', record: { id: 'demo-area-water', displayName: 'Demo Water Officer · Ward 15',       role: 'area_officer', scope: { state: 'Delhi', district: 'District A', department: 'Water Department',   ward: 'Ward 15' }, status: 'active' } },
+  { phone: '9000000009', record: { id: 'demo-area-trans', displayName: 'Demo Transport Officer · Ward 4',    role: 'area_officer', scope: { state: 'Delhi', district: 'District B', department: 'Transport Department', ward: 'Ward 4' }, status: 'active' } },
 ];
 
 export const demoStaffAvailable = (): boolean => !isProduction() && demoModeEnabled();

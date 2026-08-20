@@ -86,6 +86,10 @@ const ROLES = [
   ['State Admin', ['complaint:read', 'complaint:update_status', 'complaint:assign', 'complaint:close', 'analytics:read', 'audit:read']],
   ['District Admin', ['complaint:read', 'complaint:update_status', 'complaint:assign', 'analytics:read']],
   ['Department Officer', ['complaint:read', 'complaint:update_status', 'complaint:note', 'analytics:read']],
+  // Ward-bound triage role. Same verbs as a department officer; what makes
+  // it narrower is scope, not capability - server/rbac.ts confines every one
+  // of these to a single ward.
+  ['Area Officer', ['complaint:read', 'complaint:update_status', 'complaint:assign', 'complaint:note', 'analytics:read']],
   ['Field Officer', ['complaint:read', 'complaint:update_status', 'complaint:upload']],
   ['Auditor', ['complaint:read', 'analytics:read', 'audit:read']],
 ];

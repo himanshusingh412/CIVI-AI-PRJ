@@ -132,7 +132,7 @@ function boot(): Promise<void> {
       if (!isServerless) {
         // A setInterval on serverless is pointless — the container is frozen
         // between requests. Production drives the sweep with a cron hitting
-        // POST /api/admin/sla/sweep.
+        // POST /api/internal/sla/sweep, authenticated with CRON_SECRET.
         startSlaScheduler();
         try { await seedDemoData(); } catch { /* demo data is optional */ }
       }
@@ -600,11 +600,44 @@ app.get('/api/health', (_req, res) =>
   }),
 );
 
-app.post('/api/admin/sla/sweep', requireAuth, async (_req, res) => {
-  // Exposed so a cron trigger can drive the sweep where no long-lived
-  // process exists (see the deployment note in sla.ts).
+/**
+ * Unattended SLA sweep, for a scheduler that has no session to present.
+ *
+ * This used to live at POST /api/admin/sla/sweep behind `requireAuth` alone.
+ * Because that route was declared OUTSIDE the admin router, the only thing
+ * it actually demanded was *any* signed-in account: a citizen who had just
+ * verified an OTP could drive a nationwide escalation pass — bumping
+ * escalation levels and appending a public update to every overdue
+ * complaint in the country — and then read the breach list back out of the
+ * response, a cross-jurisdiction disclosure on top of the unauthorised
+ * mutation.
+ *
+ * The two callers want materially different things, so they now get two
+ * doors rather than one shared over-permissive one:
+ *
+ *   • a scheduler → here. Bearer CRON_SECRET, no session, COUNT ONLY. Cron
+ *                   holds no jurisdiction, so it learns how much work
+ *                   happened and nothing about which records.
+ *   • an operator → POST /api/admin/sla/sweep (server/admin.ts), which
+ *                   demands the `complaint:escalate` capability and filters
+ *                   the result down to the caller's own scope.
+ *
+ * With CRON_SECRET unset the route 404s rather than falling open: an
+ * unconfigured deployment must never be the more permissive one.
+ */
+app.post('/api/internal/sla/sweep', async (req, res) => {
+  const expected = (process.env.CRON_SECRET || '').trim();
+  if (!expected) {
+    return res.status(404).json({ error: 'not_found', message: 'Unknown endpoint.' });
+  }
+
+  const presented = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!presented || presented !== expected) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Invalid or missing cron credential.' });
+  }
+
   const breaches = await runSlaSweep();
-  res.json({ escalated: breaches.length, breaches });
+  res.json({ escalated: breaches.length });
 });
 
 app.use('/api', (_req, res) =>
