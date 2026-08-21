@@ -20,6 +20,14 @@ export interface Complaint {
   timestamp: number;
   lat: number;
   lng: number;
+  timeline?: {
+    at: string;
+    status: string;
+    statusLabel: string;
+    actorName?: string;
+    note?: string;
+    isPublic?: boolean;
+  }[];
 }
 
 export interface SystemNotification {

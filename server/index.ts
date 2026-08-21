@@ -100,7 +100,15 @@ const googleLimiter = createRateLimiter({ name: 'google', windowMs: 15 * 60_000,
  * lockout, because an attacker spreading guesses across many IPs would walk
  * straight through an IP-keyed limit alone.
  */
-const adminLoginLimiter = createRateLimiter({ name: 'admin-login', windowMs: 15 * 60_000, max: 10 });
+const adminLoginLimiter = createRateLimiter({
+  name: 'admin-login',
+  windowMs: 15 * 60_000,
+  max: 10,
+  keyFn: (req) => {
+    const emp = String(req.body?.employeeId || '').trim().toLowerCase();
+    return emp ? `emp:${emp}` : `ip:${ipOf(req)}`;
+  },
+});
 
 const sessionKey = (req: express.Request) => {
   const t = tokenFromRequest(req);

@@ -893,6 +893,11 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'auth.signIn': 'سائن ان کریں', 'auth.emailLabel': 'ای میل پتہ',
     'auth.emailHint': 'ہم 6 ہندسوں کا کوڈ بھیجیں گے۔ پاس ورڈ کی ضرورت نہیں۔',
     'auth.emailCta': 'مجھے کوڈ بھیجیں', 'auth.or': 'یا',
+    'auth.phoneLabel': 'موبائل نمبر', 'auth.otpLabel': '6-ہندسوں کا کوڈ', 'auth.otpCta': 'تصدیق کریں',
+    'wf.submitted': 'درج', 'wf.ai_verification': 'AI تصدیق', 'wf.department_assigned': 'محکمہ تفویض',
+    'wf.officer_assigned': 'آفیسر مقرر', 'wf.work_in_progress': 'کام جاری ہے', 'wf.resolved': 'حل شدہ', 'wf.closed': 'بند',
+    'dept.water': 'محکمہ پانی', 'dept.electricity': 'بجلی بورڈ', 'dept.roads': 'محکمہ سڑک', 'dept.sanitation': 'صفائی',
+    'role.citizen': 'شہری', 'role.field_officer': 'فیلڈ آفیسر', 'role.district_admin': 'ضلعی ایڈمن',
     'empty.noComplaints': 'آپ کے معیار سے مطابقت رکھنے والی کوئی شکایت نہیں ملی۔', 'lang.label': 'زبان',
   },
 };

@@ -64,6 +64,8 @@ const AdminPortalPage = lazy(() =>
   import('./portals/AdminPortalPage.tsx').then(m => ({ default: m.AdminPortalPage })));
 const DepartmentPortalPage = lazy(() =>
   import('./portals/DepartmentPortalPage.tsx').then(m => ({ default: m.DepartmentPortalPage })));
+const DepartmentDetailPage = lazy(() =>
+  import('./pages/DepartmentDetailPage.tsx').then(m => ({ default: m.DepartmentDetailPage })));
 const OfficerPortalPage = lazy(() =>
   import('./portals/OfficerPortalPage.tsx').then(m => ({ default: m.OfficerPortalPage })));
 /**
@@ -186,6 +188,14 @@ createRoot(container).render(
                   <Route
                     path="/portal/department"
                     element={staffRoute('Loading department portal…', <DepartmentPortalPage />)}
+                  />
+                  <Route
+                    path="/portal/department/:id"
+                    element={staffRoute('Loading department details…', <DepartmentDetailPage />)}
+                  />
+                  <Route
+                    path="/admin/departments/:id"
+                    element={staffRoute('Loading department details…', <DepartmentDetailPage />)}
                   />
                   <Route
                     path="/portal/admin"

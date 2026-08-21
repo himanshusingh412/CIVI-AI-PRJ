@@ -606,3 +606,40 @@ adminRouter.get('/departments', requirePermission('complaint:read'), async (req,
     });
   } catch (err) { return safeError(res, err); }
 });
+
+adminRouter.get('/departments/:id', requirePermission('complaint:read'), async (req, res) => {
+  try {
+    const p = principalOf(req);
+    const id = req.params.id.toLowerCase();
+    const rows = visibleTo(p, await store.list());
+    const matched = rows.filter(r => {
+      if (!r.department) return id === 'unrouted' || id === 'null';
+      const deptSlug = r.department.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return deptSlug.includes(id) || id.includes(deptSlug);
+    });
+
+    const OPEN_NEW: Status[] = ['submitted', 'ai_verification'];
+    const INVESTIGATING: Status[] = ['investigation_started', 'field_visit_scheduled', 'evidence_uploaded'];
+    const RESOLVED: Status[] = ['resolved', 'citizen_verification', 'closed'];
+
+    const summary = {
+      department: id,
+      total: matched.length,
+      new: matched.filter(c => OPEN_NEW.includes(c.status as Status)).length,
+      unassigned: matched.filter(c => !c.assignedOfficerId && !isTerminal(c.status)).length,
+      assigned: matched.filter(c => c.assignedOfficerId && c.status === 'officer_assigned').length,
+      investigating: matched.filter(c => INVESTIGATING.includes(c.status as Status)).length,
+      inProgress: matched.filter(c => c.status === 'work_in_progress').length,
+      resolved: matched.filter(c => RESOLVED.includes(c.status as Status)).length,
+      escalated: matched.filter(c => c.escalationLevel > 0 && !isTerminal(c.status)).length,
+      overdue: matched.filter(c => Date.parse(c.slaDeadline) < Date.now() && !isTerminal(c.status)).length,
+    };
+
+    res.json({
+      ok: true,
+      summary,
+      complaints: matched,
+    });
+  } catch (err) { return safeError(res, err); }
+});
+

@@ -246,6 +246,12 @@ export const fetchDepartments = () =>
     '/api/admin/departments',
   );
 
+export const fetchDepartmentDetail = (id: string) =>
+  adminFetch<{ ok: true; summary: DepartmentSummary; complaints: AdminComplaint[] }>(
+    `/api/admin/departments/${encodeURIComponent(id)}`,
+  );
+
+
 /** Officers this admin may assign to, optionally narrowed to one complaint's area. */
 export type AssignableOfficer = {
   id: string;

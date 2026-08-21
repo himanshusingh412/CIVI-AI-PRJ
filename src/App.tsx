@@ -1824,10 +1824,29 @@ export default function App() {
                            <div className="relative pl-8 flex flex-col gap-8">
                              <div className="absolute left-2.5 top-2 bottom-2 w-0.5 surface-2"></div>
 
-                             <TimelineStep done={true} label="Submitted" date={c.date} desc="Issue was successfully logged." />
-                             <TimelineStep done={true} label="Under Review" date="Active" desc={`Assigned to ${c.officer}`} />
-                             <TimelineStep done={c.status !== 'Pending'} current={c.status === 'In Progress'} label="In Resolution" date="In Progress" desc="Government official is visiting the site." />
-                             <TimelineStep done={c.status === 'Resolved'} label="Completed" date="Expected soon" desc="Issue has been fully fixed." />
+                             {(() => {
+                                const publicEvents = (c.timeline || []).filter(e => e.isPublic !== false);
+                                if (publicEvents.length > 0) {
+                                  return publicEvents.map((ev, idx) => (
+                                    <TimelineStep
+                                      key={idx}
+                                      done={true}
+                                      current={idx === publicEvents.length - 1 && c.status !== 'Resolved'}
+                                      label={ev.statusLabel || ev.status}
+                                      date={new Date(ev.at).toLocaleDateString()}
+                                      desc={ev.note || (ev.actorName ? `Updated by ${ev.actorName}` : 'Status updated.')}
+                                    />
+                                  ));
+                                }
+                                return (
+                                  <>
+                                    <TimelineStep done={true} label="Submitted" date={c.date} desc="Issue was successfully logged." />
+                                    <TimelineStep done={true} label="Under Review" date="Active" desc={`Assigned to ${c.officer || 'Department'}`} />
+                                    <TimelineStep done={c.status !== 'Pending'} current={c.status === 'In Progress'} label="In Resolution" date="In Progress" desc="Government official handling complaint." />
+                                    <TimelineStep done={c.status === 'Resolved'} label="Completed" date={c.status === 'Resolved' ? 'Resolved' : 'Expected soon'} desc="Issue has been fully resolved." />
+                                  </>
+                                );
+                              })()}
                            </div>
                         </div>
                      </React.Fragment>

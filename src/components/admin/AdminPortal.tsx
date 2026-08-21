@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -6,7 +7,7 @@ import {
 } from 'recharts';
 import {
   ShieldAlert, Database, Search, RefreshCw, AlertTriangle, Activity,
-  CheckCircle2, Clock, TrendingUp, FileWarning,
+  CheckCircle2, Clock, TrendingUp, FileWarning, ExternalLink,
 } from 'lucide-react';
 import { Button } from '../Button';
 import { Skeleton, StatCardSkeleton, SkeletonRegion } from '../Skeleton';
@@ -220,8 +221,18 @@ export function AdminPortal() {
                           style={selected ? { borderColor: 'var(--color-cta)' } : undefined}
                         >
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className="font-display font-bold text-content truncate">
+                            <span className="font-display font-bold text-content truncate flex items-center gap-1.5">
                               {d.department ? departmentLabel(t, d.department) : t('dept.unrouted')}
+                              {d.department && (
+                                <Link
+                                  to={`/admin/departments/${encodeURIComponent(d.department.toLowerCase().replace(/[^a-z0-9]/g, ''))}`}
+                                  onClick={e => e.stopPropagation()}
+                                  className="text-content-3 hover:text-cta transition-colors p-1"
+                                  title="Open Department Page"
+                                >
+                                  <ExternalLink size={13} />
+                                </Link>
+                              )}
                             </span>
                             <span className="font-display font-bold text-2xl text-content tabular-nums">{d.total}</span>
                           </div>
