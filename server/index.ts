@@ -410,22 +410,42 @@ app.post('/api/auth/logout', (req, res) => {
  * enforcement. Conflating the two is how role-based UIs become role-based
  * vulnerabilities.
  */
+type CitizenProfileRecord = {
+  fullName?: string;
+  phone?: string;
+  email?: string;
+  state?: string;
+  district?: string;
+  ward?: string;
+  localBody?: string;
+};
+
+const citizenProfileStore = new Map<string, CitizenProfileRecord>();
+
 app.get('/api/me', requireAuth, async (req, res) => {
   try {
     const s = (req as any).session;
     const staff = await resolveStaff(s.subjectHash);
 
     if (!staff) {
+      const prof = citizenProfileStore.get(s.subjectHash) || {};
       return res.json({
         ok: true,
         identifier: s.identifier,
         channel: s.channel,
         isStaff: false,
         role: 'citizen',
-        displayName: s.identifier,
+        displayName: prof.fullName || s.identifier,
         homeRoute: homeRouteFor('citizen'),
         permissions: [],
-        scope: {},
+        scope: {
+          phone: prof.phone || (s.channel === 'phone' ? s.identifier : undefined),
+          email: prof.email || (s.channel === 'google' || s.identifier.includes('@') ? s.identifier : undefined),
+          state: prof.state || undefined,
+          district: prof.district || undefined,
+          ward: prof.ward || undefined,
+          department: prof.localBody || undefined,
+        },
       });
     }
 
@@ -442,6 +462,84 @@ app.get('/api/me', requireAuth, async (req, res) => {
       // How the grant was obtained. Useful when an operator is staring at a
       // portal wondering why they are (or are not) an admin.
       grantSource: staff.source,
+    });
+  } catch (err) {
+    return safeError(res, err);
+  }
+});
+
+app.get('/api/citizen/profile', requireAuth, async (req, res) => {
+  try {
+    const s = (req as any).session;
+    const prof = citizenProfileStore.get(s.subjectHash) || {};
+    return res.json({
+      ok: true,
+      profile: {
+        fullName: prof.fullName || (s.identifier ? s.identifier.split('@')[0] : ''),
+        phone: prof.phone || (s.channel === 'phone' ? s.identifier : ''),
+        email: prof.email || (s.channel === 'google' || s.identifier.includes('@') ? s.identifier : ''),
+        state: prof.state || '',
+        district: prof.district || '',
+        ward: prof.ward || '',
+        localBody: prof.localBody || '',
+      },
+    });
+  } catch (err) {
+    return safeError(res, err);
+  }
+});
+
+app.patch('/api/citizen/profile', requireAuth, async (req, res) => {
+  try {
+    const s = (req as any).session;
+    const { fullName, phone, email, state, district, ward, localBody } = req.body || {};
+
+    if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
+      return res.status(400).json({ ok: false, error: 'invalid_input', message: 'Full name is required.' });
+    }
+
+    const current = citizenProfileStore.get(s.subjectHash) || {};
+    const updated: CitizenProfileRecord = {
+      fullName: fullName.trim(),
+      phone: typeof phone === 'string' ? phone.trim() : (current.phone || (s.channel === 'phone' ? s.identifier : '')),
+      email: typeof email === 'string' ? email.trim() : (current.email || (s.channel === 'google' || s.identifier.includes('@') ? s.identifier : '')),
+      state: typeof state === 'string' ? state.trim() : (current.state || ''),
+      district: typeof district === 'string' ? district.trim() : (current.district || ''),
+      ward: typeof ward === 'string' ? ward.trim() : (current.ward || ''),
+      localBody: typeof localBody === 'string' ? localBody.trim() : (current.localBody || ''),
+    };
+
+    citizenProfileStore.set(s.subjectHash, updated);
+
+    // Optional DB update if postgres is loaded
+    try {
+      const { client } = await import('./store.postgres.js');
+      const sql = client?.();
+      if (sql) {
+        await sql.query(
+          `UPDATE users 
+              SET full_name = $1,
+                  phone = COALESCE(NULLIF($2, ''), phone),
+                  email = COALESCE(NULLIF($3, ''), email),
+                  state = COALESCE(NULLIF($4, ''), state),
+                  district = COALESCE(NULLIF($5, ''), district),
+                  ward = COALESCE(NULLIF($6, ''), ward)
+            WHERE deleted_at IS NULL
+              AND (
+                (email IS NOT NULL AND encode(sha256(lower(btrim(email))::bytea), 'hex') = $7)
+                OR (phone IS NOT NULL AND encode(sha256(('+91' || right(regexp_replace(phone, '[^0-9]', '', 'g'), 10))::bytea), 'hex') = $7)
+              )`,
+          [updated.fullName, updated.phone, updated.email, updated.state, updated.district, updated.ward, s.subjectHash]
+        );
+      }
+    } catch {
+      // Ignored if DB is not connected
+    }
+
+    return res.json({
+      ok: true,
+      message: 'Profile updated successfully.',
+      profile: updated,
     });
   } catch (err) {
     return safeError(res, err);

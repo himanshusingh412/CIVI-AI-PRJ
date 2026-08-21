@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, Check, CheckCircle2, FileText, Info,
   Lock, Moon, ShieldCheck, Sun, Trash2, Upload, X, XCircle, User,
-  Mail, Phone, MapPin, Building2, Calendar, Award, Sparkles, FileSearch, Shield
+  Mail, Phone, MapPin, Building2, Calendar, Award, Sparkles, FileSearch, Shield, Pencil
 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { IntegrationBadge } from '../components/IntegrationBadge';
@@ -12,6 +12,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useI18n } from '../i18n/I18nContext';
 import { useAuth } from '../context/AuthContext';
 import { useLiveComplaints } from '../hooks/useLiveComplaints';
+import { updateCitizenProfile } from '../services/profileService';
 import {
   getSession, uploadDocument, removeDocument, clearDocuments, forgetEverything,
   verifyDocuments, startDigiLocker, listDigiLockerDocuments, importDigiLockerDocuments,
@@ -41,7 +42,7 @@ interface CitizenProfilePageProps {
 export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePageProps) {
   const { t } = useI18n();
   const { isDark, toggleTheme } = useTheme();
-  const { user, identity, identityLoading } = useAuth();
+  const { user, identity, identityLoading, refreshIdentity } = useAuth();
   const { complaints, loading: complaintsLoading, error: complaintsError, refresh: refreshComplaints } = useLiveComplaints({ mineOnly: true });
   const [params, setParams] = useSearchParams();
 
@@ -54,6 +55,22 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
   const [locker, setLocker] = useState<DigiLockerDoc[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Edit Mode state & form
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [formName, setFormName] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formState, setFormState] = useState('');
+  const [formDistrict, setFormDistrict] = useState('');
+  const [formWard, setFormWard] = useState('');
+  const [formLocalBody, setFormLocalBody] = useState('');
+
+  const [initialFormValues, setInitialFormValues] = useState<any>(null);
 
   const refresh = useCallback(async () => {
     try { setSession(await getSession()); }
@@ -145,6 +162,78 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
     ? `#CIV-${rawIdentifier.replace(/\D/g, '').slice(-6) || '10482'}`
     : '#CIV-10482';
 
+  // Start Edit Mode
+  const startEdit = useCallback(() => {
+    const init = {
+      fullName: displayName !== t('profile.notProvided') ? displayName : '',
+      phone: phoneValue !== t('profile.notProvided') ? phoneValue : '',
+      email: emailValue !== t('profile.notProvided') ? emailValue : '',
+      state: stateVal !== t('profile.notProvided') ? stateVal : '',
+      district: districtVal !== t('profile.notProvided') ? districtVal : '',
+      ward: wardVal !== t('profile.notProvided') ? wardVal : '',
+      localBody: localBodyVal !== t('profile.notProvided') ? localBodyVal : '',
+    };
+    setFormName(init.fullName);
+    setFormPhone(init.phone);
+    setFormEmail(init.email);
+    setFormState(init.state);
+    setFormDistrict(init.district);
+    setFormWard(init.ward);
+    setFormLocalBody(init.localBody);
+    setInitialFormValues(init);
+    setEditError(null);
+    setIsEditing(true);
+  }, [displayName, phoneValue, emailValue, stateVal, districtVal, wardVal, localBodyVal, t]);
+
+  const isFormDirty = useCallback(() => {
+    if (!initialFormValues) return false;
+    return (
+      formName !== initialFormValues.fullName ||
+      formPhone !== initialFormValues.phone ||
+      formEmail !== initialFormValues.email ||
+      formState !== initialFormValues.state ||
+      formDistrict !== initialFormValues.district ||
+      formWard !== initialFormValues.ward ||
+      formLocalBody !== initialFormValues.localBody
+    );
+  }, [formName, formPhone, formEmail, formState, formDistrict, formWard, formLocalBody, initialFormValues]);
+
+  const handleCancelEdit = () => {
+    if (isFormDirty()) {
+      setConfirmDiscard(true);
+    } else {
+      setIsEditing(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) {
+      setEditError(t('profile.nameRequired'));
+      return;
+    }
+    setIsSaving(true);
+    setEditError(null);
+    try {
+      await updateCitizenProfile({
+        fullName: formName.trim(),
+        phone: formPhone.trim(),
+        email: formEmail.trim(),
+        state: formState.trim(),
+        district: formDistrict.trim(),
+        ward: formWard.trim(),
+        localBody: formLocalBody.trim(),
+      });
+      await refreshIdentity();
+      setNotice(t('profile.saveSuccess'));
+      setIsEditing(false);
+    } catch (err: any) {
+      setEditError(err.message || t('profile.saveError'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--color-bg-main)', color: 'var(--color-content)' }}>
       <a href="#profile-main" className="sr-only-focusable">{t('nav.skipToMain')}</a>
@@ -209,13 +298,36 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
               </div>
             </div>
 
-            {/* Quick Action button */}
-            <div className="w-full sm:w-auto shrink-0 flex gap-2">
+            {/* Quick Action buttons */}
+            <div className="w-full sm:w-auto shrink-0 flex flex-wrap gap-2">
+              {!isEditing && (
+                <Button size="sm" variant="primary" onClick={startEdit}>
+                  <Pencil size={14} /> {t('profile.editProfile')}
+                </Button>
+              )}
               <Button size="sm" variant="secondary" onClick={() => setActiveTab('documents')}>
                 <FileSearch size={14} /> {t('profile.myDocuments')}
               </Button>
             </div>
           </section>
+
+          {/* Discard Confirmation Modal */}
+          {confirmDiscard && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm grid place-items-center p-4">
+              <div className="w-full max-w-sm rounded-2xl bordered surface p-5 space-y-4 shadow-xl text-center">
+                <AlertTriangle size={28} className="mx-auto text-amber-500" />
+                <h4 className="font-display font-bold text-base text-content">{t('profile.discardPrompt')}</h4>
+                <div className="flex gap-2">
+                  <Button fullWidth variant="ghost" size="sm" onClick={() => setConfirmDiscard(false)}>
+                    {t('profile.keepEditing')}
+                  </Button>
+                  <Button fullWidth variant="primary" size="sm" style={{ background: 'var(--color-danger)' }} onClick={() => { setConfirmDiscard(false); setIsEditing(false); }}>
+                    {t('profile.discardConfirm')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Navigation Tabs */}
           <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
@@ -310,58 +422,199 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
                 </div>
               )}
 
-              {/* Citizen Personal & Jurisdiction Details Grid */}
-              <div className="grid sm:grid-cols-2 gap-4">
-                {/* Personal Information */}
-                <div className="rounded-2xl bordered surface p-5 space-y-4">
-                  <h3 className="font-display font-bold text-[15px] text-content flex items-center gap-2">
-                    <User size={16} className="text-cta" /> {t('profile.personalDetails')}
-                  </h3>
-                  <dl className="space-y-3 text-xs">
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.fullName')}</dt>
-                      <dd className="font-bold text-content">{displayName}</dd>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.phone')}</dt>
-                      <dd className="font-mono font-bold text-content">{phoneValue}</dd>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.email')}</dt>
-                      <dd className="font-mono font-bold text-content">{emailValue}</dd>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.authMethod')}</dt>
-                      <dd className="font-bold uppercase tracking-wider text-cta text-[10px]">{authMethodLabel}</dd>
-                    </div>
-                  </dl>
-                </div>
+              {/* EDIT MODE FORM vs STATIC DETAILS GRID */}
+              {isEditing ? (
+                <form onSubmit={handleSaveProfile} className="rounded-3xl bordered surface p-6 space-y-6 shadow-sm">
+                  <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'var(--color-border)' }}>
+                    <h3 className="font-display font-bold text-lg text-content flex items-center gap-2">
+                      <Pencil size={18} className="text-cta" /> {t('profile.editProfile')}
+                    </h3>
+                    <span className="text-xs text-content-3 font-mono">{t('profile.citizenId')}: {citizenIdCode}</span>
+                  </div>
 
-                {/* Jurisdiction & Address Details */}
-                <div className="rounded-2xl bordered surface p-5 space-y-4">
-                  <h3 className="font-display font-bold text-[15px] text-content flex items-center gap-2">
-                    <MapPin size={16} className="text-saffron" /> {t('profile.jurisdictionLocation')}
-                  </h3>
-                  <dl className="space-y-3 text-xs">
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.state')}</dt>
-                      <dd className="font-bold text-content">{stateVal}</dd>
+                  {editError && (
+                    <div className="rounded-xl p-3 text-xs flex items-center gap-2" style={{ background: 'var(--color-danger-pale)', color: 'var(--color-danger)' }}>
+                      <AlertTriangle size={14} /> <span>{editError}</span>
                     </div>
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.district')}</dt>
-                      <dd className="font-bold text-content">{districtVal}</dd>
+                  )}
+
+                  <div className="grid sm:grid-cols-2 gap-4 text-xs">
+                    {/* Full Name */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content block">{t('profile.fullName')} *</label>
+                      <input
+                        type="text"
+                        value={formName}
+                        onChange={e => setFormName(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 rounded-xl bordered bg-surface text-content focus:outline-none focus:ring-2 focus:ring-cta text-xs font-semibold"
+                        placeholder="e.g. Himanshu Singh"
+                      />
                     </div>
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.ward')}</dt>
-                      <dd className="font-bold text-content">{wardVal}</dd>
+
+                    {/* Phone Number */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content block">{t('profile.phone')}</label>
+                      <input
+                        type="text"
+                        value={formPhone}
+                        onChange={e => setFormPhone(e.target.value)}
+                        disabled={user?.channel === 'phone'}
+                        className={`w-full px-3 py-2 rounded-xl bordered bg-surface text-content focus:outline-none focus:ring-2 focus:ring-cta text-xs font-mono ${user?.channel === 'phone' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        placeholder="+91 XXXXX XXXXX"
+                      />
+                      {user?.channel === 'phone' && (
+                        <span className="text-[10px] text-content-3">{t('profile.readOnlySystem')}</span>
+                      )}
                     </div>
-                    <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">{t('profile.localBody')}</dt>
-                      <dd className="font-bold text-content">{localBodyVal}</dd>
+
+                    {/* Email Address */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content block">{t('profile.email')}</label>
+                      <input
+                        type="email"
+                        value={formEmail}
+                        onChange={e => setFormEmail(e.target.value)}
+                        disabled={user?.channel === 'google'}
+                        className={`w-full px-3 py-2 rounded-xl bordered bg-surface text-content focus:outline-none focus:ring-2 focus:ring-cta text-xs font-mono ${user?.channel === 'google' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        placeholder="user@example.com"
+                      />
+                      {user?.channel === 'google' && (
+                        <span className="text-[10px] text-content-3">{t('profile.readOnlyOAuth')}</span>
+                      )}
                     </div>
-                  </dl>
+
+                    {/* Authentication Method (Read-Only) */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content-3 block">{t('profile.authMethod')}</label>
+                      <div className="w-full px-3 py-2 rounded-xl bordered bg-surface-2 text-content-3 font-bold uppercase text-[10px] tracking-wider">
+                        {authMethodLabel} ({t('profile.readOnlySystem')})
+                      </div>
+                    </div>
+
+                    {/* State / UT */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content block">{t('profile.state')}</label>
+                      <input
+                        type="text"
+                        value={formState}
+                        onChange={e => setFormState(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bordered bg-surface text-content focus:outline-none focus:ring-2 focus:ring-cta text-xs font-semibold"
+                        placeholder="e.g. Uttar Pradesh / Delhi"
+                      />
+                    </div>
+
+                    {/* District */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content block">{t('profile.district')}</label>
+                      <input
+                        type="text"
+                        value={formDistrict}
+                        onChange={e => setFormDistrict(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bordered bg-surface text-content focus:outline-none focus:ring-2 focus:ring-cta text-xs font-semibold"
+                        placeholder="e.g. Prayagraj / New Delhi"
+                      />
+                    </div>
+
+                    {/* Ward */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content block">{t('profile.ward')}</label>
+                      <input
+                        type="text"
+                        value={formWard}
+                        onChange={e => setFormWard(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bordered bg-surface text-content focus:outline-none focus:ring-2 focus:ring-cta text-xs font-semibold"
+                        placeholder="e.g. Ward 14"
+                      />
+                    </div>
+
+                    {/* Local Governance Body */}
+                    <div className="space-y-1">
+                      <label className="font-bold text-content block">{t('profile.localBody')}</label>
+                      <input
+                        type="text"
+                        value={formLocalBody}
+                        onChange={e => setFormLocalBody(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bordered bg-surface text-content focus:outline-none focus:ring-2 focus:ring-cta text-xs font-semibold"
+                        placeholder="e.g. Municipal Corporation / NDMC"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex justify-end gap-3 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleCancelEdit} disabled={isSaving}>
+                      {t('profile.cancel')}
+                    </Button>
+                    <Button type="submit" variant="primary" size="sm" loading={isSaving} loadingText={t('profile.saving')}>
+                      <Check size={14} /> {t('profile.saveChanges')}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                /* Citizen Personal & Jurisdiction Details Grid */
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {/* Personal Information */}
+                  <div className="rounded-2xl bordered surface p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-display font-bold text-[15px] text-content flex items-center gap-2">
+                        <User size={16} className="text-cta" /> {t('profile.personalDetails')}
+                      </h3>
+                      <button onClick={startEdit} className="text-xs font-bold text-cta flex items-center gap-1 hover:underline">
+                        <Pencil size={13} /> {t('profile.editProfile')}
+                      </button>
+                    </div>
+                    <dl className="space-y-3 text-xs">
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.fullName')}</dt>
+                        <dd className="font-bold text-content">{displayName}</dd>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.phone')}</dt>
+                        <dd className="font-mono font-bold text-content">{phoneValue}</dd>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.email')}</dt>
+                        <dd className="font-mono font-bold text-content">{emailValue}</dd>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.authMethod')}</dt>
+                        <dd className="font-bold uppercase tracking-wider text-cta text-[10px]">{authMethodLabel}</dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  {/* Jurisdiction & Address Details */}
+                  <div className="rounded-2xl bordered surface p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-display font-bold text-[15px] text-content flex items-center gap-2">
+                        <MapPin size={16} className="text-saffron" /> {t('profile.jurisdictionLocation')}
+                      </h3>
+                      <button onClick={startEdit} className="text-xs font-bold text-cta flex items-center gap-1 hover:underline">
+                        <Pencil size={13} /> {t('profile.editProfile')}
+                      </button>
+                    </div>
+                    <dl className="space-y-3 text-xs">
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.state')}</dt>
+                        <dd className="font-bold text-content">{stateVal}</dd>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.district')}</dt>
+                        <dd className="font-bold text-content">{districtVal}</dd>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.ward')}</dt>
+                        <dd className="font-bold text-content">{wardVal}</dd>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        <dt className="text-content-3">{t('profile.localBody')}</dt>
+                        <dd className="font-bold text-content">{localBodyVal}</dd>
+                      </div>
+                    </dl>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Verified Identity Status Card */}
               <div className="rounded-2xl p-5 border flex items-start gap-4"
