@@ -8,7 +8,7 @@ import {
   sendFirebasePhoneOtp,
   confirmFirebasePhoneOtp,
 } from '../lib/firebase';
-import { firebaseSignIn, validatePhone, type AuthUser } from '../services/authService';
+import { firebaseSignIn, isAuthError, validatePhone, type AuthUser } from '../services/authService';
 import { useI18n } from '../i18n/I18nContext';
 
 interface FirebasePhoneAuthUIProps {
@@ -224,10 +224,9 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
       const res = await firebaseSignIn(idToken);
       setLoading(false);
 
-      if (!res || (res as any).error) {
-        const msg = (res as any)?.message || 'Authentication failed.';
-        setError(msg);
-        onError?.(msg);
+      if (isAuthError(res)) {
+        setError(res.message);
+        onError?.(res.message);
         return;
       }
 
