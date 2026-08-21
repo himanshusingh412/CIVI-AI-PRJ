@@ -166,6 +166,20 @@ const DEMO_ROSTER: Array<{ employeeId: string; subject: string; displayName: str
   { employeeId: 'EMP-0007', subject: '+919000000007', displayName: 'Demo Electricity Officer · Ward 12' },
   { employeeId: 'EMP-0008', subject: '+919000000008', displayName: 'Demo Water Officer · Ward 15' },
   { employeeId: 'EMP-0009', subject: '+919000000009', displayName: 'Demo Transport Officer · Ward 4' },
+
+  // Production Roster Officers
+  { employeeId: 'EMP-2101', subject: '+919000000002', displayName: 'Delhi State Administrator' },
+  { employeeId: 'EMP-2102', subject: '+919000000002', displayName: 'Uttar Pradesh State Administrator' },
+  { employeeId: 'EMP-2103', subject: '+919000000003', displayName: 'New Delhi District Magistrate' },
+  { employeeId: 'EMP-2104', subject: '+919000000007', displayName: 'Electricity Department Head' },
+  { employeeId: 'EMP-2105', subject: '+919000000009', displayName: 'Roads Department Head' },
+  { employeeId: 'EMP-2106', subject: '+919000000004', displayName: 'Health Department Head' },
+  { employeeId: 'EMP-2107', subject: '+919000000009', displayName: 'Transport Department Head' },
+  { employeeId: 'EMP-2108', subject: '+919000000004', displayName: 'Municipal Corporation Head' },
+  { employeeId: 'EMP-2109', subject: '+919000000004', displayName: 'Water Department Head' },
+  { employeeId: 'EMP-2110', subject: '+919000000004', displayName: 'Police Department Head' },
+  { employeeId: 'EMP-2111', subject: '+919000000007', displayName: 'Electricity Officer, MG Road' },
+  { employeeId: 'EMP-2112', subject: '+919000000006', displayName: 'Read-only Auditor' },
 ];
 
 async function warmDemoCredential(): Promise<void> {
