@@ -153,20 +153,42 @@ function demoCredentials(): Credential[] {
 }
 
 let demoWarm: Promise<void> | null = null;
+
+/**
+ * One credential per demo staff role.
+ *
+ * Previously only the super admin had one, which meant /admin/login could
+ * demonstrate exactly one kind of user — and "how do I sign in as a
+ * department officer?" had no answer at all short of provisioning real
+ * credentials. Each entry's `subject` is the demo staff member's phone in
+ * E.164, matching DEMO_STAFF in server/staff.ts, so the role, department,
+ * district and ward all come from the staff directory exactly as they would
+ * for a real employee. Nothing here grants authority; it only proves
+ * identity for someone the directory already knows.
+ */
+const DEMO_ROSTER: Array<{ employeeId: string; subject: string; displayName: string }> = [
+  { employeeId: 'EMP-0001', subject: '+919000000001', displayName: 'Demo Super Admin' },
+  { employeeId: 'EMP-0002', subject: '+919000000002', displayName: 'Demo State Admin' },
+  { employeeId: 'EMP-0003', subject: '+919000000003', displayName: 'Demo District Admin' },
+  { employeeId: 'EMP-0004', subject: '+919000000004', displayName: 'Demo Water Dept Officer' },
+  { employeeId: 'EMP-0005', subject: '+919000000005', displayName: 'Demo Field Officer' },
+  { employeeId: 'EMP-0006', subject: '+919000000006', displayName: 'Demo Auditor' },
+  { employeeId: 'EMP-0007', subject: '+919000000007', displayName: 'Demo Electricity Officer · Ward 12' },
+  { employeeId: 'EMP-0008', subject: '+919000000008', displayName: 'Demo Water Officer · Ward 15' },
+  { employeeId: 'EMP-0009', subject: '+919000000009', displayName: 'Demo Transport Officer · Ward 4' },
+];
+
 async function warmDemoCredential(): Promise<void> {
   if (isProduction() || !demoModeEnabled()) return;
   if (demoCache) return;
   if (!demoWarm) {
     demoWarm = (async () => {
       const password = process.env.ADMIN_DEMO_PASSWORD || 'civicai-demo';
-      demoCache = [
-        {
-          employeeId: 'EMP-0001',
-          subject: '+919000000001',
-          displayName: 'Demo Super Admin',
-          passwordHash: await hashPassword(password),
-        },
-      ];
+      // One hash, reused: these are demo accounts sharing a documented
+      // password, and hashing nine times costs ~450ms of cold start for no
+      // security benefit whatsoever.
+      const passwordHash = await hashPassword(password);
+      demoCache = DEMO_ROSTER.map(r => ({ ...r, passwordHash }));
     })();
   }
   await demoWarm;

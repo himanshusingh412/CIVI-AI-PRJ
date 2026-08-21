@@ -13,6 +13,8 @@
     "dev:full": "node scripts/dev.mjs",
     "doctor": "node scripts/doctor.mjs",
     "db:seed": "node db/seed.mjs",
+    "staff:new": "tsx scripts/make-staff.mjs",
+    "staff:password": "tsx scripts/hash-admin-password.mjs",
     "db:seed:dry": "node db/seed.mjs --dry",
     "db:reset": "node db/seed.mjs --reset",
     "db:drop": "node db/seed.mjs --drop",

@@ -1370,8 +1370,17 @@ export default function App() {
               >
                 <div className="flex items-center justify-between shrink-0">
                   <div>
-                    <h2 className="font-display font-bold text-2xl">{lang === 'en' ? 'Officer Dashboard' : 'अधिकारी डैशबोर्ड'}</h2>
-                    <p className="text-content-3 text-sm mt-0.5">{lang === 'en' ? 'Track and manage citizen submissions' : 'प्रस्तुतियों को ट्रैक करें और प्रबंधित करें'}</p>
+                    {/*
+                      This is the CITIZEN portal. The heading said "Officer
+                      Dashboard · Track and manage citizen submissions" —
+                      left over from before the two portals were separated,
+                      so a citizen was shown an officer's framing over their
+                      own complaints. It also hardcoded a two-language
+                      ternary, which silently falls back to Hindi for the
+                      other ten locales.
+                    */}
+                    <h2 className="font-display font-bold text-2xl">{t('app.myComplaints')}</h2>
+                    <p className="text-content-3 text-sm mt-0.5">{t('app.myComplaintsSub')}</p>
                   </div>
 
                   <div className="flex items-center gap-3">

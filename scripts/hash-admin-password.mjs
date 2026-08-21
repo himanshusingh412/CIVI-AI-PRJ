@@ -2,7 +2,11 @@
 /**
  * Generate an ADMIN_CREDENTIALS entry for the staff portal.
  *
- *   node scripts/hash-admin-password.mjs EMP-2012 ravi@gov.in
+ *   npx tsx scripts/hash-admin-password.mjs EMP-2012 ravi@gov.in
+ *
+ * For a NEW staff member prefer `npm run staff:new`, which emits the matching
+ * STAFF_DIRECTORY entry too. This script is for setting a password on someone
+ * who is already in the directory.
  *
  * Prompts for the password without echoing it, prints one JSON object, and
  * never writes anything to disk.
@@ -12,14 +16,14 @@
  * captured by process accounting. A credential that is easy to pass on the
  * command line is a credential that leaks into three logs on its way in.
  */
-import { createInterface } from 'node:readline';
 import { hashPassword } from '../server/adminAuth.ts';
+import { askNewPassword } from './lib/prompt.mjs';
 
 const [employeeId, subject] = process.argv.slice(2);
 
 if (!employeeId || !subject) {
   console.error(`
-Usage: node scripts/hash-admin-password.mjs <employeeId> <subject>
+Usage: npx tsx scripts/hash-admin-password.mjs <employeeId> <subject>
 
   employeeId  what the person types at /admin/login   e.g. EMP-2012
   subject     how they appear in the staff directory  e.g. ravi@gov.in
@@ -33,40 +37,7 @@ resolve to no role at all.
   process.exit(1);
 }
 
-function askHidden(prompt) {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    const onData = (ch) => {
-      // Repaint the prompt with no echo, so the password never reaches the
-      // terminal scrollback.
-      const s = ch.toString();
-      if (s === '\n' || s === '\r' || s === '') return;
-      process.stdout.clearLine?.(0);
-      process.stdout.cursorTo?.(0);
-      process.stdout.write(prompt);
-    };
-    process.stdin.on('data', onData);
-    rl.question(prompt, (answer) => {
-      process.stdin.off('data', onData);
-      rl.close();
-      process.stdout.write('\n');
-      resolve(answer);
-    });
-  });
-}
-
-const password = await askHidden('Password: ');
-
-if (password.length < 12) {
-  console.error('\nRefusing: use at least 12 characters. This credential opens a government portal.');
-  process.exit(1);
-}
-
-const confirm = await askHidden('Confirm:  ');
-if (confirm !== password) {
-  console.error('\nPasswords do not match.');
-  process.exit(1);
-}
+const password = await askNewPassword();
 
 const passwordHash = await hashPassword(password);
 

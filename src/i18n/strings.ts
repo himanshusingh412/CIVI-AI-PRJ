@@ -328,6 +328,11 @@ const en = {
   'assign.notAssignedYet': 'Not assigned to an officer yet.',
   'assign.reasonPlaceholder': 'Why is this being reassigned?',
 
+  'app.myComplaints': 'My complaints',
+  'app.myComplaintsSub': 'Everything you have filed, and where each one has reached',
+  'app.noComplaintsYet': 'You have not filed a complaint yet.',
+  'app.fileFirstComplaint': 'File your first complaint',
+
   'empty.noComplaints': 'No complaints found matching your criteria.',
   'lang.label': 'Language',
 
@@ -684,6 +689,10 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'assign.saving': 'सहेजा जा रहा है…',
     'assign.notAssignedYet': 'अभी तक किसी अधिकारी को नहीं सौंपी गई।',
     'assign.reasonPlaceholder': 'यह क्यों बदली जा रही है?',
+    'app.myComplaints': 'मेरी शिकायतें',
+    'app.myComplaintsSub': 'आपने जो दर्ज किया है, और हर एक कहाँ तक पहुँची है',
+    'app.noComplaintsYet': 'आपने अभी तक कोई शिकायत दर्ज नहीं की है।',
+    'app.fileFirstComplaint': 'अपनी पहली शिकायत दर्ज करें',
     'empty.noComplaints': 'आपके मापदंडों से मेल खाती कोई शिकायत नहीं मिली।', 'lang.label': 'भाषा',
   },
 
