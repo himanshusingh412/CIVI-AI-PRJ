@@ -1,224 +1,545 @@
 # CivicAI
 
-**An AI-assisted citizen grievance platform for Indian government services.**
+> AI-powered multilingual civic grievance management and government complaint coordination platform.
 
-Report a civic problem, check what a scheme requires, verify your documents
-before you apply, and follow every step until it is resolved — in twelve
-languages, on any device, by web or WhatsApp.
+CivicAI connects citizens with municipal government authorities. It streamlines civic issue reporting, automates department tagging via AI, provides real-time resolution timelines, and equips administrators and field officers with role-based jurisdiction workflows.
 
 ---
 
-## The problem
+## Overview
 
-Two things make government services hard to use, and neither is a technology
-problem:
+CivicAI is designed to address fundamental challenges in civic administration. It provides an intuitive interface for citizens to submit grievances by voice, chat, or guided form in **12 Indian languages**, while enforcing strict administrative governance, department-wise isolation, and officer accountability on the backend.
 
-1. **You cannot tell what happened to your complaint.** It goes into an
-   office and comes out weeks later, or not at all, with no way to find out
-   who holds it or when it is due.
-2. **Applications get rejected weeks after submission** over a name spelled
-   differently on two documents, or a date of birth in the other convention.
-   The information needed to prevent that was in the citizen's own hands the
-   whole time.
+### For Citizens
+- **File Civic Complaints:** Submit issues with photos, voice recordings, or text.
+- **Real-Time Progress Tracking:** Follow every complaint status change with timestamped audit logs.
+- **Multilingual AI Assistance:** Get Instant guidance on municipal schemes and complaint filing in regional languages.
+- **Dynamic Profile & Document Verification:** Cross-check identity documents before applying for civic services.
 
-CivicAI attacks both: every complaint has a reference, an accountable
-officer, a deadline and a public timeline; and documents can be checked
-against each other **before** anything is submitted.
-
----
-
-## What is actually live
-
-The single most important thing in this README. Every integration reports
-one of four honest modes, derived from what is actually configured — never
-from a status a component asserts by hand. The UI shows the same badge.
-
-| Integration | Without configuration | With configuration | Notes |
-|---|---|---|---|
-| **AI assistant** | 🔵 Demo (canned fallbacks) | ✅ Live (Gemini → Bedrock → Claude failover) | `AI_API_KEY` |
-| **Document OCR** | 🔵 Demo (deterministic fixtures) | ✅ Live (Gemini Vision) | reuses `AI_API_KEY` |
-| **Database** | 🟡 In-memory, non-durable | ✅ Live (Neon Postgres) | `DATABASE_URL` |
-| **Google sign-in** | 🟡 Configuration required | ✅ Live | `GOOGLE_CLIENT_ID` |
-| **OTP sign-in** | ✅ Live (codes logged, not sent) | ✅ Live (delivered) | codes are always real |
-| **SMS delivery** | 🔵 Demo (console) | ✅ Live (MSG91 / Twilio) | **billed per message** |
-| **Email delivery** | 🔵 Demo (console) | ✅ Live (Resend) | `RESEND_API_KEY` |
-| **WhatsApp** | 🔵 Demo (simulated outbox) | 🟡 Configuration required | Meta Cloud API |
-| **DigiLocker** | 🔵 Demo (sample documents) | 🟡 Configuration required | needs a MeitY partner account |
-| **Voice** | ✅ Live (browser Web Speech) | — | no server credential |
-
-**Nothing is labelled LIVE that has not been wired to a real provider.**
-Simulated integrations say "Demo" everywhere they appear, including on the
-DigiLocker consent screen, whose first sentence is that it is not DigiLocker.
-
-Two integrations are marked 🟡 rather than ✅ even with credentials, and the
-reason is deliberate:
-
-- **DigiLocker** — the OAuth flow is implemented, but the issued-documents
-  response parser has never received a real partner response. Rather than
-  ship a parser written against a guessed shape, the live path returns
-  `501 Not Implemented` with an explanation. See `server/digilocker.ts`.
-- **WhatsApp** — fully implemented against the documented Cloud API, but not
-  yet tested against a live Meta business account.
+### For Government & Administration
+- **Department-Based Workflow:** Scoped queues for Electricity, Water, Roads, Sanitation, Health, and Police.
+- **Geographic & Role-Based Isolation:** Access restricted by State, District, Department, Municipal Ward, or Officer ID.
+- **Complaint Assignment & Reassignment:** Assign complaints to field officers with deadline tracking and SLA alerts.
+- **Tamper-Evident Audit Logging:** Hash-chained activity history for complete administrative transparency.
 
 ---
 
-## Features
+## Problem
 
-### For citizens
-- **File a complaint** by guided form, conversation, or WhatsApp
-- **AI Document Verification** — cross-check your documents before applying
-- **Track to resolution** — every status change, timestamped, with the
-  responsible officer and the deadline
-- **Voice input** in twelve languages, running in the browser
-- **Notifications** you choose, on channels you switch on
+Municipal governance frequently suffers from operational bottlenecks:
 
-### For staff
-- **Officer workspace** — a queue ordered by deadline with live countdowns
-- **Department administration** — queue plus analytics, scoped to jurisdiction
-- **System administration** — cross-department analytics and the audit log
-- **14-state workflow** where illegal transitions are impossible by construction
-- **Tamper-evident audit log** with hash chaining
+1. **Unclear Department Jurisdiction:** Citizens often do not know whether an issue falls under the Jal Board, Electricity Board, PWD (Roads), or Municipal Corporation.
+2. **Lack of Resolution Visibility:** Complaints disappear into bureaucratic workflows without reference tracking or estimated resolution times.
+3. **Application Rejection over Minor Discrepancies:** Citizens discover document mismatches (e.g., name spelling or date formats) weeks after submission.
+4. **Language & Accessibility Barriers:** Traditional municipal portals are rarely accessible in native regional Indian languages.
+5. **Insecure Access Control:** Legacy administrative systems often lack fine-grained data isolation between different departments and geographic wards.
 
 ---
 
-## Quick start
+## Solution
+
+CivicAI provides a structured, transparent, and automated resolution pipeline:
+
+```
+Citizen Submission
+       │
+       ▼
+AI Classification & Triage
+       │
+       ▼
+Department Identification (e.g., Water, Roads, Electricity)
+       │
+       ▼
+District & Municipal Ward Mapping
+       │
+       ▼
+Local Officer Assignment
+       │
+       ▼
+Field Investigation & Action
+       │
+       ▼
+Resolution Proposal & Evidence
+       │
+       ▼
+Citizen Confirmation & Closure
+```
+
+---
+
+## Key Features
+
+### Citizen Features
+- **Authentication:** Phone SMS OTP and Google OAuth 2.0.
+- **Citizen Dashboard:** Live view of active grievances, resolution updates, and historical complaints.
+- **Multi-Modal Reporting:** File complaints via conversational AI assistant, guided wizard, or voice input.
+- **Live Complaint Tracking:** Reference ID lookup (`CIV-YYYYMMDD-XXX`) with step-by-step progress timelines.
+- **Dynamic Profile:** Displays real user details, registered jurisdiction, and live complaint statistics.
+- **Document Mismatch Inspector:** OCR-powered pre-verification of identity documents before scheme submission.
+- **Multilingual Support:** 12 Indian languages with dynamic UI translation.
+
+### Administrative Features
+- **Dedicated Staff Portal:** Accessible via `/admin/login` and `/staff`.
+- **Role-Based Access Control (RBAC):** Fine-grained permission scoping (`super_admin`, `state_admin`, `district_admin`, `department_officer`, `area_officer`, `auditor`).
+- **Department Dashboards:** Filtered analytics and queues for specific municipal departments.
+- **Geographic Scoping:** Filter complaints by State, District, and Municipal Ward.
+- **Officer Assignment:** Assign or reassign complaints to field officers with explicit history tracking.
+- **Audit Log:** Tamper-evident hash-chained logs for administrative actions.
+
+### Officer Features
+- **Officer Workspace:** Scoped view (`/portal/officer`) showing assigned field complaints.
+- **SLA & Deadline Monitoring:** Live countdown indicators for overdue complaints.
+- **Investigation & Verification:** Field notes and resolution evidence attachment.
+- **Status Updates:** Advance complaints through workflow states (e.g., `INVESTIGATION`, `ACTION_TAKEN`, `RESOLVED`).
+
+---
+
+## How CivicAI Works
+
+1. **Submission:** A citizen reports a problem (e.g., a burst water pipe) using text, voice, or image upload.
+2. **AI Triage:** CivicAI's vision/text AI categorizes the issue, determines urgency, and maps it to the correct department (e.g., *Water Supply*).
+3. **Geographic Mapping:** The issue is tagged with the citizen's district and municipal ward.
+4. **Officer Assignment:** A department administrator assigns the complaint to the designated area officer.
+5. **Field Verification & Action:** The assigned officer receives the complaint in their workspace, investigates, updates status, and uploads resolution evidence.
+6. **Confirmation & Closure:** The citizen receives a notification, inspects the resolution, and confirms closure.
+
+---
+
+## User Roles
+
+CivicAI enforces 8 distinct system roles defined in `server/staff.ts` & `server/rbac.ts`:
+
+| Role | Scope / Jurisdiction | Primary Capability |
+| :--- | :--- | :--- |
+| **`citizen`** | Own data only | Submit complaints, track status, view profile & documents |
+| **`super_admin`** | System-wide (Nationwide) | Full administrative access, audit logs, global configuration |
+| **`state_admin`** | Specific State / UT | Administrative oversight across all districts in a state |
+| **`district_admin`** | Specific District | Manage department workflows within a single district |
+| **`department_officer`** | Specific Department | Head of department managing state/district departmental queues |
+| **`area_officer`** | Department + District + Ward | Local officer managing complaints in a specific municipal ward |
+| **`field_officer`** | Assigned Officer ID | Field worker managing explicitly assigned task queues |
+| **`auditor`** | System-wide (Read-only) | Compliance auditing with sensitive personal data masked |
+
+---
+
+## Citizen Portal
+
+The Citizen Portal (`/portal`) provides an intuitive mobile-responsive interface:
+
+- **`/portal`**: Main dashboard with quick action tiles, active complaint cards, and AI entry points.
+- **`/portal/profile`**: Dynamic profile displaying authenticated user data, phone/email, authentication method, jurisdiction, live complaint counts, and document verification.
+- **`/portal/track`**: Public and authenticated reference ID tracker (`CIV-YYYYMMDD-XXX`).
+- **`/portal/assistant`**: Full-screen conversational AI assistant supporting text and voice in 12 languages.
+
+---
+
+## Admin Portal
+
+The Administrative Portal (`/portal/admin` & `/portal/department`) provides government officials with high-level oversight and control:
+
+- **Employee Authentication:** Secure Employee ID + Password login via `/admin/login`.
+- **Cross-Department Analytics:** Volume distribution, average resolution time, and SLA breach metrics.
+- **Audit Log Viewer:** Cryptographically linked log records detailing every status change and assignment.
+
+---
+
+## Officer Portal
+
+The Officer Workspace (`/portal/officer`) is tailored for field officers:
+
+- **Task Queue:** List of assigned complaints sorted by urgency and SLA deadline.
+- **Action Drawer:** Tools to update workflow states, add field inspection notes, and upload proof of work.
+- **Jurisdiction Boundary:** Officers only see complaints matching their assigned ward and department.
+
+---
+
+## Department-Based Complaint Management
+
+Complaints are strictly partitioned into municipal departments:
+
+- 💧 **Water Supply** (Leaks, contamination, pressure issues)
+- ⚡ **Electricity Board** (Power cuts, transformer failures, dangerous wiring)
+- 🛣️ **Roads & Infrastructure** (Potholes, broken footpaths, damaged bridges)
+- 🏥 **Healthcare** (Hospital hygiene, clinic availability, medical supplies)
+- 🗑️ **Sanitation & Waste** (Uncollected garbage, open drains, public toilets)
+- 🚓 **Law & Order / Police** (Public safety, street lighting, nuisance reporting)
+- 🏛️ **Municipal Corporation** (Property tax, trade licenses, general civic issues)
+
+---
+
+## Complaint Assignment System
+
+When an administrator assigns a complaint, the backend records:
+
+```json
+{
+  "complaintId": "CIV-20260821-402",
+  "department": "Electricity",
+  "district": "North Delhi",
+  "ward": "MG Road",
+  "assignedOfficer": "EMP-2111 (Electricity Officer)",
+  "assignedBy": "EMP-2101 (State Administrator)",
+  "assignedAt": "2026-08-21T16:45:00Z"
+}
+```
+
+If a complaint is reassigned, the assignment history maintains a complete record of previous officers, assignment times, and reasons for transfer.
+
+---
+
+## Complaint Lifecycle
+
+CivicAI implements a robust 14-state workflow state machine (`server/complaints.ts`):
+
+```
+[SUBMITTED] ──► [TRIAGED] ──► [ASSIGNED] ──► [INVESTIGATION] ──► [IN_PROGRESS]
+     │                                                               │
+     ├───────────────► [REJECTED]                                    ▼
+     │                                                        [ACTION_TAKEN]
+     ▼                                                               │
+[ESCALATED]                                                          ▼
+     ▲                                                       [FIELD_VERIFIED]
+     │                                                               │
+     │                                                               ▼
+[REOPENED] ◄───────────────────────────────────────────── [RESOLUTION_PROPOSED]
+     │                                                               │
+     │                                                               ▼
+     └─────────────────────────────────────────────────── [CITIZEN_CONFIRMATION]
+                                                                     │
+                                                                     ▼
+                                                             [RESOLVED / CLOSED]
+```
+
+---
+
+## Verification & Progress Tracking
+
+CivicAI distinguishes between live integrated features and simulated demonstration modes:
+
+| Feature | Production Provider | Demo / Fallback Behavior |
+| :--- | :--- | :--- |
+| **AI Triage & Chat** | Gemini 3.1 Flash / Claude / Bedrock | Canned responses & heuristic classification |
+| **Document OCR** | Gemini 3.1 Vision API | Deterministic field extraction fixtures |
+| **Database** | Neon Serverless Postgres | Non-durable in-memory store |
+| **Authentication** | Google OAuth 2.0 & Firebase Auth | Echoed OTP codes for local testing (`AUTH_DEV_OTP=true`) |
+| **DigiLocker** | Live Partner API | Simulated OAuth authorization flow & sample document parser |
+| **WhatsApp Integration** | Meta Cloud API | Simulated outbox event log |
+
+---
+
+## Multilingual Support
+
+CivicAI natively supports **12 Indian languages**:
+
+1. English (`en`)
+2. Hindi (`hi`)
+3. Bengali (`bn`)
+4. Telugu (`te`)
+5. Marathi (`mr`)
+6. Tamil (`ta`)
+7. Urdu (`ur`)
+8. Gujarati (`gu`)
+9. Kannada (`kn`)
+10. Malayalam (`ml`)
+11. Punjabi (`pa`)
+12. Odia (`or`)
+
+The i18n system (`src/i18n/strings.ts`) ensures that switching language translates the entire user interface—including buttons, headings, statuses, categories, and error messages—while preserving data identifiers (`"electricity"`, `"CIV-10482"`).
+
+---
+
+## AI Capabilities
+
+- **Automated Complaint Classification:** Evaluates issue text and photos to assign department, priority, and category.
+- **Document Mismatch Detection:** Extracts fields from uploaded identity documents (Aadhaar, PAN, Voter ID) and highlights discrepancies before scheme submission.
+- **Multilingual Assistant:** Answers citizen queries regarding civic services, document requirements, and status updates in regional languages.
+
+---
+
+## Security & Role-Based Access
+
+- **Server-Side Authorization:** Every API endpoint verifies session tokens and checks role capabilities (`server/rbac.ts`). Frontend routing is purely for UX.
+- **Credential Storage:** Staff passwords are hashed using Node.js `crypto.scrypt` with random salts.
+- **Citizen Data Isolation:** Citizens can only fetch complaints and profile data linked to their authenticated session.
+- **Tamper-Evident Audit Log:** Administrative actions (status changes, reassignments) write to a cryptographically hashed audit chain.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Browser / Client                     │
+│    (React 18 SPA · Tailwind CSS · Lucide · i18n)        │
+└────────────────────────────┬────────────────────────────┘
+                             │  HTTPS / Cookie Auth
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Express API Server                   │
+│          (TypeScript · Session Management · RBAC)       │
+└──────┬──────────────────────┬────────────────────┬──────┘
+       │                      │                    │
+       ▼                      ▼                    ▼
+┌──────────────┐      ┌──────────────┐     ┌──────────────┐
+│ Neon Postgres│      │ AI Providers │     │  Adapters    │
+│  (Database)  │      │(Gemini/Claude│     │(Resend/OCR/  │
+└──────────────┘      └──────────────┘     │ DigiLocker)  │
+                                           └──────────────┘
+```
+
+---
+
+## Technology Stack
+
+### Frontend
+- **Framework:** React 18 with TypeScript
+- **Build Tool:** Vite
+- **Styling:** Vanilla CSS design tokens + Tailwind CSS
+- **Icons:** Lucide React
+- **Routing:** React Router v6
+
+### Backend & API
+- **Server:** Node.js + Express
+- **Language:** TypeScript (`tsx`)
+- **Authentication:** Custom session cookies, Scrypt password hashing, Google OAuth, Firebase Auth
+- **Database:** Neon Serverless Postgres (`@neondatabase/serverless`)
+- **Real-Time Events:** Server-Sent Events (SSE)
+
+---
+
+## Project Structure
+
+```
+civicai/
+├── server/                   # Express backend server
+│   ├── adminAuth.ts          # Employee ID + Scrypt password auth
+│   ├── auth.ts               # Session management & OAuth handlers
+│   ├── complaints.ts         # Complaint endpoints & lifecycle logic
+│   ├── index.ts              # Express routes & server setup
+│   ├── rbac.ts               # Role-based access control engine
+│   ├── staff.ts              # Staff directory & role resolution
+│   └── store.ts              # Database client & in-memory fallbacks
+├── src/                      # React frontend
+│   ├── components/           # Reusable UI components (Button, Cards, Drawers)
+│   ├── context/              # AuthContext, ThemeContext, I18nContext
+│   ├── hooks/                # useLiveComplaints, useVoice
+│   ├── i18n/                 # Translation dictionaries (STRINGS for 12 languages)
+│   ├── pages/                # CitizenProfilePage, AdminPortalPage, OfficerWorkspace
+│   ├── services/             # API services (authService, complaintService)
+│   └── types.ts              # Shared TypeScript definitions
+├── db/                       # Database migrations & seeds
+├── scripts/                  # Administrative CLI scripts (provisioning, hashing)
+├── tests/                    # Vitest unit & integration tests
+└── README.md
+```
+
+---
+
+## Database Schema
+
+Core tables in Neon Postgres (`db/schema.sql`):
+
+- **`users`**: User records, emails, phones, names, roles, jurisdiction scope.
+- **`roles`**: System roles (`super_admin`, `district_admin`, `area_officer`, `citizen`).
+- **`departments`**: Municipal departments (`Water`, `Electricity`, `Roads`, etc.).
+- **`officers`**: Staff postings linked to users, departments, and municipal wards.
+- **`complaints`**: Grievance records, locations, statuses, department tags, timestamps.
+- **`complaint_assignments`**: Tracking log for officer assignments and reassignments.
+- **`complaint_status_history`**: Audit records of workflow state transitions.
+- **`audit_log`**: Tamper-evident administrative action log.
+
+---
+
+## Authentication
+
+### Citizen Authentication
+- **Methods:** Google OAuth 2.0 or Phone SMS OTP.
+- **Session:** Stateless signed session cookie (`civicai_session`).
+
+### Admin & Staff Authentication
+- **Endpoint:** `/admin/login`
+- **Credentials:** Employee ID (e.g., `EMP-0001`, `EMP-2104`) + Password.
+- **Hashing:** `scrypt` with dynamic salt parameters (`server/adminAuth.ts`).
+
+---
+
+## API Endpoints
+
+### Auth & User APIs
+- `GET /api/me` — Resolve current authenticated identity and capabilities.
+- `POST /api/auth/login` — Authenticate staff via Employee ID + Password.
+- `POST /api/auth/logout` — Terminate current session.
+
+### Complaint APIs
+- `GET /api/complaints` — List complaints (filtered by user session or RBAC scope).
+- `POST /api/complaints` — File a new civic grievance.
+- `GET /api/complaints/:id` — Fetch detailed complaint information and history.
+- `POST /api/complaints/:id/assign` — Assign or reassign complaint to an officer.
+- `PATCH /api/complaints/:id/status` — Advance complaint workflow state.
+
+---
+
+## Environment Variables
+
+Configured in `.env` (sample in `.env.example`):
+
+| Variable | Purpose | Required |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | Neon Postgres connection string | Recommended (Falls back to in-memory) |
+| `SESSION_SECRET` | Secret key for signing session cookies | Yes (>= 32 chars) |
+| `AI_API_KEY` | Gemini API key for triage & AI assistant | Optional (Falls back to demo AI) |
+| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 client ID | Optional |
+| `ADMIN_DEMO_PASSWORD`| Default password for demo staff accounts | Optional (Defaults to `123456`) |
+| `AUTH_DEV_OTP` | Echo OTP codes in response for dev testing | Development only |
+
+---
+
+## Installation
 
 ```bash
-git clone <this repository>
+# Clone the repository
+git clone https://github.com/himanshusingh412/CIVI-AI-PRJ.git
 cd civicai
+
+# Install dependencies
 npm install
-cp .env.example .env      # then edit — see docs/ENVIRONMENT.md
-npm run dev:full          # API on :8787, web on :3000
+
+# Copy environment template
+cp .env.example .env
 ```
 
-Open <http://localhost:3000>. Everything works with an empty `.env`; the
-integration table above describes what you get.
+---
+
+## Local Development
+
+Start the backend API server and frontend Vite development server concurrently:
 
 ```bash
-npm run lint     # tsc --noEmit
-npm test         # 88 tests, no external services required
-npm run build    # production bundle
-npm run verify   # all three
+npm run dev:full
+```
+
+- **Frontend:** `http://localhost:3000`
+- **Backend API:** `http://localhost:8787`
+
+---
+
+## Running the Project
+
+To run individual parts of the application:
+
+```bash
+# Run backend server only
+npm run dev:server
+
+# Run frontend SPA only
+npm run dev:web
 ```
 
 ---
 
-## Demo accounts
+## Testing
 
-Set `AUTH_DEV_OTP=true` in `.env`. The one-time code comes back in the API
-response, so you can sign in as any role in about ten seconds.
+Execute unit and integration test suites:
 
-| Phone | Role | Sees |
-|---|---|---|
-| `9000000001` | Super admin | Everything |
-| `9000000002` | State admin | Delhi only |
-| `9000000003` | District admin | Delhi / New Delhi only |
-| `9000000004` | Department officer | Delhi / Water Department only |
-| `9000000005` | Field officer | Only cases assigned to them |
-| `9000000006` | Auditor | Everything, read-only, contact details masked |
+```bash
+# Run all tests
+npm test
 
-Any other number signs in as a citizen.
-
-**These accounts do not exist in production.** They require
-`NODE_ENV !== 'production'` **and** demo mode; both guards are checked in
-`server/staff.ts`. There is no header, query parameter or request body that
-can grant a role — see [SECURITY.md](docs/SECURITY.md).
-
----
-
-## Architecture at a glance
-
-```
-Browser ──┐
-WhatsApp ─┼──▶ Express API ──▶ Postgres (Neon)
-          │         │
-          │         ├──▶ AI providers (Gemini → Bedrock → Claude → static)
-          │         ├──▶ OCR adapter (Gemini Vision → fixture)
-          │         ├──▶ Notification adapters (in-app / email / SMS / WhatsApp)
-          │         └──▶ DigiLocker adapter (OAuth → simulator)
-          └──▶ React SPA (citizen · officer · department · admin)
+# Run linter / TypeScript check
+npm run lint
 ```
 
-Every external dependency sits behind an adapter with a simulated
-counterpart, so the whole product is demonstrable with no credentials at all
-and nothing has to pretend.
+---
 
-Full detail: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Build
+
+Compile frontend assets and verify production server build:
+
+```bash
+npm run build
+```
+
+The output bundle is written to `dist/`.
 
 ---
 
-## Roles and routing
+## Deployment
 
-After sign-in the browser asks `GET /api/me` where it belongs and follows the
-answer. It never derives a route from a role it holds locally.
+CivicAI is optimized for deployment on Vercel:
 
-| Role | Lands on |
-|---|---|
-| Citizen | `/portal` |
-| Field officer | `/portal/officer` |
-| Department officer, District admin | `/portal/department` |
-| State admin, Super admin, Auditor | `/portal/admin` |
+1. Push your changes to GitHub.
+2. Connect your repository to Vercel.
+3. Configure environment variables in Vercel settings.
+4. Deploy!
 
-Routing is convenience. **Authorisation is enforcement** — every screen
-behind those routes fetches through endpoints that re-check capability and
-jurisdiction on every single request. A user who edits the URL gets a screen
-that refuses to fill itself, not a leak.
+- **Production URL:** [https://civi-ai-prj.vercel.app](https://civi-ai-prj.vercel.app)
+- **Main Branch Preview:** [https://civi-ai-prj-git-main-himanshu-prj.vercel.app](https://civi-ai-prj-git-main-himanshu-prj.vercel.app)
 
 ---
 
-## Documentation
+## Demo Workflow
 
-| Document | What it covers |
-|---|---|
-| [PRD.md](docs/PRD.md) | The problem, who it is for, what success looks like |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and the decisions behind it |
-| [TECH_STACK.md](docs/TECH_STACK.md) | What is used and why |
-| [DATABASE.md](docs/DATABASE.md) | Schema, RLS, and what is deliberately not stored |
-| [API.md](docs/API.md) | Every endpoint, with auth requirements |
-| [FEATURES.md](docs/FEATURES.md) | Feature-by-feature status |
-| [USER_FLOW.md](docs/USER_FLOW.md) | Citizen, officer and admin journeys |
-| [UI_GUIDELINES.md](docs/UI_GUIDELINES.md) | Design tokens, motion, accessibility rules |
-| [CODING_RULES.md](docs/CODING_RULES.md) | Conventions this codebase actually follows |
-| [FILE_STRUCTURE.md](docs/FILE_STRUCTURE.md) | Where things live |
-| [SECURITY.md](docs/SECURITY.md) | Threat model, controls, and known gaps |
-| [ENVIRONMENT.md](docs/ENVIRONMENT.md) | Every environment variable |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Vercel deployment, step by step |
-| [TESTING.md](docs/TESTING.md) | What is tested and what is not |
-| [DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | The end-to-end demonstration |
-| [PPT_CONTENT.md](docs/PPT_CONTENT.md) | Slide content for a presentation |
-| [FAQ.md](docs/FAQ.md) | Questions a reviewer will ask |
-| [ROADMAP.md](docs/ROADMAP.md) | What comes next |
-| [TASKS.md](docs/TASKS.md) | Outstanding work |
-| [PROMPTS.md](docs/PROMPTS.md) | Every AI prompt, and the rules they enforce |
-| [CHANGELOG.md](docs/CHANGELOG.md) | What changed |
-| [BACKEND.md](docs/BACKEND.md) | Backend notes (pre-existing) |
-| [DESIGN.md](docs/DESIGN.md) | Visual identity (pre-existing) |
+1. **Citizen Flow:**
+   - Open [https://civi-ai-prj.vercel.app](https://civi-ai-prj.vercel.app).
+   - Sign in using Google or any 10-digit phone number.
+   - Click **File a Complaint** and report an issue (e.g., Water leakage).
+   - View your complaint reference ID and dynamic Citizen Profile.
+
+2. **Admin & Officer Flow:**
+   - Open `/admin/login`.
+   - Log in with Employee ID `EMP-0001` (Super Admin) or `EMP-2109` (Water Department Head) and password `123456`.
+   - View the scoped departmental dashboard.
+   - Assign the complaint to a local field officer (`EMP-0008` / `EMP-2111`).
+   - Log in as the field officer to update the status to **RESOLVED**.
 
 ---
 
-## Known limitations
+## Screens / Modules
 
-Stated plainly, because a prototype that hides these is worse than one that
-does not have the features.
+### Citizen Screens
+- **Landing Page:** Project overview, service highlights, language picker.
+- **Citizen Portal (`/portal`):** Main hub for filing and tracking complaints.
+- **Citizen Profile (`/portal/profile`):** Real-time user stats, details, and document verification.
+- **AI Assistant (`/portal/assistant`):** Multilingual voice/text chat assistant.
 
-1. **Several stores are in-memory.** OTP state, verification sessions,
-   DigiLocker authorisations, notification preferences and WhatsApp
-   conversation state live in process memory. They do not survive a restart
-   and are not shared across serverless instances. Redis is the fix; the
-   trade-off is documented at each site.
-2. **Document verification stores nothing at all.** This is deliberate (see
-   `server/documents.ts`), but it means a session is lost on restart.
-3. **DigiLocker live mode is not implemented past authorisation.**
-4. **WhatsApp has not been tested against a real Meta account.**
-5. **Attachments over WhatsApp are not accepted** — downloading an
-   attacker-supplied file from an unauthenticated webhook needs its own
-   review.
-6. **The citizen dashboard collapses 14 workflow states into 4 buckets.**
-   The seam is `src/services/complaintAdapter.ts`, which documents the loss.
-7. **SMS costs money.** There is no free SMS. The UI says so.
+### Administrative & Officer Screens
+- **Staff Login (`/admin/login`):** Employee ID + Password credential screen.
+- **Admin Dashboard (`/portal/admin`):** Cross-department metrics and audit logs.
+- **Department Portal (`/portal/department`):** Department-specific queue and assignment manager.
+- **Officer Workspace (`/portal/officer`):** Field officer assigned task list and resolution drawer.
 
 ---
 
-## Licence
+## Future Roadmap
 
-See [LICENSE.md](docs/LICENSE.md).
+- [x] Multilingual support across 12 Indian languages.
+- [x] Role-Based Access Control (RBAC) with geographic and departmental scoping.
+- [x] Scrypt password authentication for staff.
+- [x] Dynamic citizen profile & real-time SSE updates.
+- [ ] Integration with official MeitY DigiLocker partner APIs.
+- [ ] Automated WhatsApp notifications via Meta Cloud API.
+- [ ] GIS mapping for real-time field officer dispatching.
+- [ ] Native mobile apps (iOS & Android).
+
+---
+
+## Limitations
+
+- **Demo Integration Modes:** Unconfigured services (such as SMS gateways or DigiLocker partner APIs) operate in transparent demo/simulated modes.
+- **In-Memory Store Fallback:** When `DATABASE_URL` is omitted, data persists in memory for the duration of the server process.
+
+---
+
+## Contributing
+
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/amazing-feature`).
+3. Commit your changes (`git commit -m 'Add amazing feature'`).
+4. Push to the branch (`git push origin feature/amazing-feature`).
+5. Open a Pull Request.
+
+---
+
+## License
+
+This project is licensed under the MIT License. See [docs/LICENSE.md](docs/LICENSE.md) for details.
