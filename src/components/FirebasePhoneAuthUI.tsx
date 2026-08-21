@@ -8,7 +8,7 @@ import {
   sendFirebasePhoneOtp,
   confirmFirebasePhoneOtp,
 } from '../lib/firebase';
-import { firebaseSignIn, isAuthError, validatePhone, type AuthUser } from '../services/authService';
+import { firebaseSignIn, requestOtp, verifyOtp, isAuthError, validatePhone, type AuthUser } from '../services/authService';
 import { useI18n } from '../i18n/I18nContext';
 
 interface FirebasePhoneAuthUIProps {
@@ -91,6 +91,8 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
+  const [isBackendFallback, setIsBackendFallback] = useState(false);
+  const [backendDevOtp, setBackendDevOtp] = useState<string | null>(null);
 
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
@@ -140,6 +142,24 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
       return;
     }
 
+    const digitsOnly = phone.replace(/\D/g, '').slice(-10);
+    const e164Phone = `+91${digitsOnly}`;
+
+    if (isBackendFallback) {
+      setLoading(true);
+      const res = await requestOtp(e164Phone, { formElapsedMs: 1500, company: '' });
+      setLoading(false);
+      if (isAuthError(res)) {
+        setError(res.message);
+        onError?.(res.message);
+        return;
+      }
+      if (res.devOtp) setBackendDevOtp(res.devOtp);
+      setStep('code');
+      setResendIn(30);
+      return;
+    }
+
     const getOrCreateRecaptchaVerifier = (): RecaptchaVerifier => {
       if (recaptchaVerifierRef.current) {
         return recaptchaVerifierRef.current;
@@ -156,11 +176,6 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
     setLoading(true);
     try {
       const verifier = getOrCreateRecaptchaVerifier();
-
-      // Format to E.164 format (+91XXXXXXXXXX)
-      const digitsOnly = phone.replace(/\D/g, '').slice(-10);
-      const e164Phone = `+91${digitsOnly}`;
-
       const confirmation = await sendFirebasePhoneOtp(e164Phone, verifier);
       confirmationRef.current = confirmation;
 
@@ -168,7 +183,6 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
       setResendIn(30);
       setLoading(false);
     } catch (err: any) {
-      setLoading(false);
       if (recaptchaVerifierRef.current) {
         try {
           recaptchaVerifierRef.current.clear();
@@ -182,31 +196,40 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
 
       console.error('[Firebase Phone Auth] Error sending OTP:', err);
       let msg = err?.message || 'Failed to send SMS OTP via Firebase.';
-      if (err?.code === 'auth/operation-not-allowed' || msg.includes('region enabled')) {
-        /*
-         * This is a DEPLOYMENT misconfiguration (SMS region policy), not
-         * anything the person signing in did or can fix. The previous copy
-         * put "Go to Firebase Console -> Authentication -> Settings" on a
-         * citizen's screen: it names internal infrastructure, reads as if
-         * they had got something wrong, and prescribes an action only an
-         * operator can take. The actionable detail belongs in the console
-         * where an operator will actually see it; the screen gets a plain
-         * statement and a route that still works.
-         */
-        console.error(
-          '[Firebase Phone Auth] SMS delivery refused for this region. ' +
-          'Firebase Console → Authentication → Settings → SMS region policy: ' +
-          'allow India (IN), or register a test phone number.',
-        );
-        msg = 'SMS sign-in is temporarily unavailable. Please continue with Google, or try again shortly.';
-      } else if (msg.includes('already been rendered')) {
-        msg = 'Verification reset — please tap “Send Real-Time OTP” again.';
-      } else if (err?.code === 'auth/invalid-phone-number') {
+
+      // Fallback to CivicAI backend OTP if Firebase SMS billing is disabled or quota exceeded
+      if (
+        err?.code === 'auth/billing-not-enabled' ||
+        msg.includes('billing-not-enabled') ||
+        err?.code === 'auth/operation-not-allowed' ||
+        msg.includes('quota-exceeded')
+      ) {
+        console.warn('[Firebase Phone Auth] Firebase SMS restricted. Falling back to CivicAI backend OTP.');
+        try {
+          const res = await requestOtp(e164Phone, { formElapsedMs: 1500, company: '' });
+          setLoading(false);
+          if (isAuthError(res)) {
+            setError(res.message);
+            onError?.(res.message);
+            return;
+          }
+          setIsBackendFallback(true);
+          if (res.devOtp) setBackendDevOtp(res.devOtp);
+          setStep('code');
+          setResendIn(30);
+          return;
+        } catch (fbErr: any) {
+          setLoading(false);
+          setError(fbErr?.message || 'Failed to request OTP code.');
+          return;
+        }
+      }
+
+      setLoading(false);
+      if (err?.code === 'auth/invalid-phone-number') {
         msg = 'That mobile number doesn’t look right. Enter a 10-digit Indian number.';
       } else if (err?.code === 'auth/too-many-requests') {
         msg = 'Too many attempts from this device. Please wait a few minutes before trying again.';
-      } else if (err?.code === 'auth/quota-exceeded') {
-        msg = 'SMS sign-in is busy right now. Please continue with Google, or try again shortly.';
       }
       setError(msg);
       onError?.(msg);
@@ -219,6 +242,27 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
 
     if (!/^\d{6}$/.test(otp)) {
       setError('Enter the 6-digit verification code.');
+      return;
+    }
+
+    if (isBackendFallback) {
+      setLoading(true);
+      try {
+        const digitsOnly = phone.replace(/\D/g, '').slice(-10);
+        const res = await verifyOtp(`+91${digitsOnly}`, otp);
+        setLoading(false);
+
+        if (isAuthError(res)) {
+          setError(res.message);
+          onError?.(res.message);
+          return;
+        }
+
+        onSignedIn({ identifier: res.identifier, channel: res.channel });
+      } catch (err: any) {
+        setLoading(false);
+        setError(err?.message || 'Verification failed.');
+      }
       return;
     }
 
@@ -270,6 +314,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
    */
   const showDemoHint =
     !!DEMO_PHONE && !!DEMO_OTP && phone.replace(/\D/g, '').slice(-10) === DEMO_PHONE;
+  const effectiveDemoCode = backendDevOtp || (showDemoHint ? DEMO_OTP : null);
 
   return (
     <div className="w-full my-2">
@@ -328,7 +373,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
               {t('auth.phoneHint')}
             </p>
 
-            {showDemoHint && <DemoCodeCallout code={DEMO_OTP} t={t} />}
+            {effectiveDemoCode && <DemoCodeCallout code={effectiveDemoCode} t={t} />}
           </div>
 
           <Button
@@ -388,7 +433,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
             {/* Repeated on the code step: this is where the number is
                 actually needed, and by now the visitor has navigated away
                 from where they first saw it. */}
-            {showDemoHint && <DemoCodeCallout code={DEMO_OTP} t={t} onUse={() => setOtp(DEMO_OTP)} />}
+            {effectiveDemoCode && <DemoCodeCallout code={effectiveDemoCode} t={t} onUse={() => setOtp(effectiveDemoCode)} />}
           </div>
 
           <Button
