@@ -52,6 +52,14 @@ const App = lazy(() => import('./App.tsx'));
  */
 const SignInPage = lazy(() =>
   import('./pages/SignInPage.tsx').then(m => ({ default: m.SignInPage })));
+/**
+ * The staff door. A separate route AND a separate lazy chunk from the citizen
+ * sign-in: a citizen visiting /login must never download a password form for
+ * a government system, and keeping them apart is what makes that true rather
+ * than merely intended.
+ */
+const AdminLoginPage = lazy(() =>
+  import('./pages/AdminLoginPage.tsx').then(m => ({ default: m.AdminLoginPage })));
 const AdminPortalPage = lazy(() =>
   import('./portals/AdminPortalPage.tsx').then(m => ({ default: m.AdminPortalPage })));
 const DepartmentPortalPage = lazy(() =>
@@ -126,6 +134,9 @@ createRoot(container).render(
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/login" element={staffRoute('Loading sign-in…', <SignInPage audience="citizen" />)} />
                   <Route path="/staff" element={staffRoute('Loading sign-in…', <SignInPage audience="staff" />)} />
+                  {/* Employee ID + password. /staff remains the OTP/Google
+                      door for staff who have no password credential. */}
+                  <Route path="/admin/login" element={staffRoute('Loading sign-in…', <AdminLoginPage />)} />
 
                   <Route path="/portal" element={<CitizenPortal />} />
                   <Route

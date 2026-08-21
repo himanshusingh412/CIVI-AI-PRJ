@@ -33,7 +33,15 @@ const GENERIC_BAD_CODE = 'That code is invalid or has expired. Please request a 
  * is shown to the person who just signed in, so getting it wrong is a small
  * lie told at the most trust-sensitive moment in the product.
  */
-export type Channel = 'phone' | 'google';
+/**
+ * How the session's holder proved who they are.
+ *
+ * 'password' is the staff portal's employee-id login. It is a CHANNEL, not a
+ * role: a password session carries no more authority than an OTP one, and
+ * server/staff.ts resolves what it may do from the subject exactly the same
+ * way for all three.
+ */
+export type Channel = 'phone' | 'google' | 'password';
 
 // ───────────────────────── stores ─────────────────────────
 type OtpRecord = {

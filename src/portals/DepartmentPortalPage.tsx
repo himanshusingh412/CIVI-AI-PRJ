@@ -24,7 +24,7 @@ export function DepartmentPortalPage() {
   const [tab, setTab] = useState<Tab>('queue');
 
   return (
-    <RequireRole allow={ROLE_GROUPS.department}>
+    <RequireRole allow={ROLE_GROUPS.department} signInPath="/admin/login">
       <StaffShell title="CivicAI" subtitle="Department Administration">
         <div className="flex gap-1 surface-2 bordered rounded-xl p-1 w-fit mb-5" role="tablist">
           {([

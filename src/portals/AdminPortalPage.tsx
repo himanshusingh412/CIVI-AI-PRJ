@@ -15,7 +15,7 @@ import { StaffShell } from './StaffShell';
  */
 export function AdminPortalPage() {
   return (
-    <RequireRole allow={ROLE_GROUPS.admin}>
+    <RequireRole allow={ROLE_GROUPS.admin} signInPath="/admin/login">
       <StaffShell title="CivicAI" subtitle="Grievance Administration">
         <AdminPortal />
       </StaffShell>

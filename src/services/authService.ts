@@ -158,6 +158,23 @@ export const googleSignIn = (credential: string) =>
 export const firebaseSignIn = (idToken: string) =>
   apiPost<SessionOk>('/api/auth/firebase', { idToken });
 
+/**
+ * Staff portal sign-in.
+ *
+ * Returns the same SessionOk as every other channel, because it IS the same
+ * session — the password proves who you are and nothing more. What that
+ * person may then do comes from GET /api/me, which resolves role and
+ * jurisdiction server-side from the staff directory. A successful login here
+ * is not by itself evidence of any privilege.
+ *
+ * `formElapsedMs` feeds the same honeypot check as the OTP form.
+ */
+export const adminLogin = (
+  employeeId: string,
+  password: string,
+  meta: { formElapsedMs: number; company: string },
+) => apiPost<SessionOk>('/api/auth/admin-login', { employeeId, password, ...meta });
+
 export const refreshSession = (signal?: AbortSignal) =>
   apiPost<SessionOk>('/api/auth/refresh', {}, signal);
 

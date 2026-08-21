@@ -17,6 +17,7 @@ import { generateJson, providerStatus, Type } from './providers.js';
 import { emailStatus, maskEmail } from './email.js';
 import { verifyGoogleCredential, googleAuthStatus } from './google.js';
 import { verifyFirebaseIdToken, firebaseAdminStatus } from './firebase.js';
+import { verifyAdminLogin, adminAuthStatus } from './adminAuth.js';
 import {
   csrfProtection,
   securityHeaders,
@@ -91,6 +92,15 @@ const globalLimiter = createRateLimiter({ name: 'global', windowMs: 60_000, max:
 const otpRequestLimiter = createRateLimiter({ name: 'otp-request', windowMs: 15 * 60_000, max: 10 });
 const otpVerifyLimiter = createRateLimiter({ name: 'otp-verify', windowMs: 15 * 60_000, max: 20 });
 const googleLimiter = createRateLimiter({ name: 'google', windowMs: 15 * 60_000, max: 20 });
+/*
+ * Tighter than the OTP limiters on purpose. An OTP is a short-lived secret
+ * the server itself just issued; a password is long-lived and chosen by a
+ * human, so an online guessing budget must be far smaller. This is the
+ * IP-keyed half — server/adminAuth.ts keeps a separate per-employee-id
+ * lockout, because an attacker spreading guesses across many IPs would walk
+ * straight through an IP-keyed limit alone.
+ */
+const adminLoginLimiter = createRateLimiter({ name: 'admin-login', windowMs: 15 * 60_000, max: 10 });
 
 const sessionKey = (req: express.Request) => {
   const t = tokenFromRequest(req);
@@ -224,6 +234,66 @@ app.post('/api/auth/verify-otp', otpVerifyLimiter, async (req, res) => {
       identifier: result.identifier,
       channel: result.channel,
       expiresInSec: result.expiresInSec,
+      csrfToken: csrf,
+    });
+  } catch (err) {
+    return safeError(res, err);
+  }
+});
+
+/**
+ * POST /api/auth/admin-login — employee id + password, for the staff portal.
+ *
+ * Authentication only. On success this mints a session over the staff
+ * SUBJECT (the email or phone already in the staff directory) exactly as the
+ * OTP and Google paths do, and server/staff.ts then resolves role,
+ * department, district and ward from it. Nothing about authorisation is
+ * decided here: a valid password for someone who is not in the staff
+ * directory yields a perfectly good session with no role at all, which is
+ * the correct outcome rather than a bug.
+ *
+ * The response is deliberately uniform across "no such employee" and "wrong
+ * password", and runs under the same latency floor as the other auth routes,
+ * so neither the body nor the timing tells an attacker whether an employee id
+ * exists. A lockout is the one thing allowed to be distinguishable, because
+ * the person hitting it needs to know why they are being refused.
+ */
+app.post('/api/auth/admin-login', adminLoginLimiter, async (req, res) => {
+  try {
+    const result = await constantTime(AUTH_TIME_FLOOR_MS, async () => {
+      const human = await checkNotBot(req.body, ipOf(req));
+      // Mirror the OTP route: a filtered bot gets the ordinary failure rather
+      // than a distinct one it could detect and route around.
+      if (!human.ok) return { ok: false as const, reason: 'invalid_credentials' as const };
+      return verifyAdminLogin(req.body?.employeeId, req.body?.password);
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'locked_out') {
+        if (result.retryAfterSec) res.setHeader('Retry-After', String(result.retryAfterSec));
+        return res.status(429).json({
+          error: 'locked_out',
+          message: 'Too many failed attempts. Try again later.',
+          retryAfterSec: result.retryAfterSec,
+        });
+      }
+      return res.status(401).json({
+        error: 'invalid_credentials',
+        message: 'That employee ID or password is not correct.',
+      });
+    }
+
+    const session = issueSession(
+      result.displayName || result.employeeId || 'Staff',
+      'password',
+      result.subject,
+    );
+    const csrf = setSessionCookies(res, session.token, session.expiresInSec);
+    return res.json({
+      ok: true,
+      identifier: session.identifier,
+      channel: session.channel,
+      expiresInSec: session.expiresInSec,
       csrfToken: csrf,
     });
   } catch (err) {

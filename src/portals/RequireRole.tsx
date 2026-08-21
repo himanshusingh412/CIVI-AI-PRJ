@@ -28,7 +28,14 @@ import { useT } from '../i18n/I18nContext';
 export function RequireRole({
   allow,
   children,
-  /** Where an anonymous visitor is sent to authenticate. */
+  /**
+   * Where an anonymous visitor is sent to authenticate.
+   *
+   * Defaults to the staff OTP door. Admin surfaces override it to
+   * /admin/login so an unauthenticated visit to an admin route lands on the
+   * employee-ID form rather than being bounced to a citizen-shaped sign-in
+   * and left to work out that they used the wrong entrance.
+   */
   signInPath = '/staff',
 }: {
   allow: readonly IdentityRole[];

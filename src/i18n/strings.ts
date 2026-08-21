@@ -310,6 +310,16 @@ const en = {
   'stat.newToday': 'New today',
   'stat.avgResolution': 'Avg resolution',
 
+  'adminLogin.title': 'Government Administration Portal',
+  'adminLogin.subtitle': 'Sign in with your employee ID',
+  'adminLogin.employeeId': 'Employee ID',
+  'adminLogin.employeeIdPlaceholder': 'EMP-0000',
+  'adminLogin.password': 'Password',
+  'adminLogin.cta': 'Sign in',
+  'adminLogin.signingIn': 'Signing in…',
+  'adminLogin.notStaff': 'Not staff? Back to home',
+  'adminLogin.notice': 'Authorised personnel only. Access is logged and audited.',
+
   'empty.noComplaints': 'No complaints found matching your criteria.',
   'lang.label': 'Language',
 
@@ -650,6 +660,15 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'stat.slaBreached': 'एसएलए उल्लंघन',
     'stat.newToday': 'आज नई',
     'stat.avgResolution': 'औसत समाधान',
+    'adminLogin.title': 'सरकारी प्रशासन पोर्टल',
+    'adminLogin.subtitle': 'अपनी कर्मचारी आईडी से साइन इन करें',
+    'adminLogin.employeeId': 'कर्मचारी आईडी',
+    'adminLogin.employeeIdPlaceholder': 'EMP-0000',
+    'adminLogin.password': 'पासवर्ड',
+    'adminLogin.cta': 'साइन इन करें',
+    'adminLogin.signingIn': 'साइन इन किया जा रहा है…',
+    'adminLogin.notStaff': 'कर्मचारी नहीं हैं? मुखपृष्ठ पर लौटें',
+    'adminLogin.notice': 'केवल अधिकृत कर्मियों के लिए। पहुँच दर्ज और लेखा-परीक्षित की जाती है।',
     'empty.noComplaints': 'आपके मापदंडों से मेल खाती कोई शिकायत नहीं मिली।', 'lang.label': 'भाषा',
   },
 
