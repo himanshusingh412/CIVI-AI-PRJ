@@ -176,10 +176,19 @@ export const changeStatus = (id: string, status: string, note?: string) =>
     { method: 'POST', body: JSON.stringify({ status, note }) },
   );
 
-export const assignOfficer = (id: string, officerId: string, officerName: string) =>
+/**
+ * Assign or reassign a complaint.
+ *
+ * `officerName` is deliberately NOT a parameter any more. It used to be sent
+ * alongside the id and stored verbatim, which meant the officer's displayed
+ * name was whatever this browser said it was. The server now reads the name
+ * from the officer roster; sending one would be ignored, so the signature
+ * stops offering it. `reason` is free text recorded on a reassignment.
+ */
+export const assignOfficer = (id: string, officerId: string, reason?: string) =>
   adminFetch<{ ok: true; complaint: AdminComplaint }>(
     `/api/admin/complaints/${encodeURIComponent(id)}/assign`,
-    { method: 'POST', body: JSON.stringify({ officerId, officerName }) },
+    { method: 'POST', body: JSON.stringify({ officerId, reason }) },
   );
 
 /**
@@ -202,3 +211,49 @@ export const fetchAudit = (limit = 100) =>
   );
 
 export { isAuthError, apiGet, apiPost };
+
+/**
+ * Per-department counters for the admin overview.
+ *
+ * `department` is the STABLE stored value, or null for complaints not yet
+ * routed anywhere — the caller translates it for display via
+ * i18n/labels.departmentLabel rather than the server sending prose. Null is
+ * kept rather than dropped because unrouted complaints are precisely the
+ * ones that need triage.
+ */
+export type DepartmentSummary = {
+  department: string | null;
+  total: number;
+  new: number;
+  unassigned: number;
+  assigned: number;
+  investigating: number;
+  inProgress: number;
+  resolved: number;
+  escalated: number;
+  overdue: number;
+};
+
+export const fetchDepartments = () =>
+  adminFetch<{ ok: true; total: number; departments: DepartmentSummary[] }>(
+    '/api/admin/departments',
+  );
+
+/** Officers this admin may assign to, optionally narrowed to one complaint's area. */
+export type AssignableOfficer = {
+  id: string;
+  name: string;
+  employeeId?: string;
+  department?: string;
+  district?: string;
+  ward?: string;
+};
+
+export const fetchOfficers = (filters: Record<string, string | undefined> = {}) => {
+  const qs = new URLSearchParams(
+    Object.entries(filters).filter(([, v]) => !!v) as [string, string][],
+  ).toString();
+  return adminFetch<{ ok: true; count: number; officers: AssignableOfficer[] }>(
+    `/api/admin/officers${qs ? `?${qs}` : ''}`,
+  );
+};

@@ -13,11 +13,12 @@ import { Skeleton, StatCardSkeleton, SkeletonRegion } from '../Skeleton';
 import { ComplaintDrawer } from './ComplaintDrawer';
 import { useThemeTokens } from '../../hooks/useThemeTokens';
 import {
-  fetchMe, fetchComplaints, fetchAnalytics, fetchAudit,
+  fetchMe, fetchComplaints, fetchAnalytics, fetchAudit, fetchDepartments,
   isAuthError, type AdminComplaint, type Analytics, type AuditEntry, type MeResponse,
+  type DepartmentSummary,
 } from '../../services/adminService';
 import { useT } from '../../i18n/I18nContext';
-import { statusLabel } from '../../i18n/labels';
+import { statusLabel, departmentLabel } from '../../i18n/labels';
 
 type Tab = 'overview' | 'complaints' | 'audit';
 
@@ -27,6 +28,7 @@ export function AdminPortal() {
   const [tab, setTab] = useState<Tab>('overview');
   const [me, setMe] = useState<MeResponse | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [departments, setDepartments] = useState<DepartmentSummary[]>([]);
   const [complaints, setComplaints] = useState<AdminComplaint[]>([]);
   const [audit, setAudit] = useState<{ entries: AuditEntry[]; chain: { intact: boolean } } | null>(null);
   const [selected, setSelected] = useState<AdminComplaint | null>(null);
@@ -35,14 +37,15 @@ export function AdminPortal() {
 
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
+  const [department, setDepartment] = useState('all');
   const [priority, setPriority] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const [meRes, anRes, cRes] = await Promise.all([
-      fetchMe(), fetchAnalytics(), fetchComplaints({ q, status, priority }),
+    const [meRes, anRes, cRes, dRes] = await Promise.all([
+      fetchMe(), fetchAnalytics(), fetchComplaints({ q, status, priority, department }), fetchDepartments(),
     ]);
 
     if (isAuthError(meRes)) {
@@ -53,13 +56,14 @@ export function AdminPortal() {
     setMe(meRes);
     if (!isAuthError(anRes)) setAnalytics(anRes);
     if (!isAuthError(cRes)) setComplaints(cRes.complaints);
+    if (!isAuthError(dRes)) setDepartments(dRes.departments);
 
     // Auditors and admins can read the log; others get a 403 we simply ignore.
     const aRes = await fetchAudit(60);
     setAudit(isAuthError(aRes) ? null : { entries: aRes.entries, chain: aRes.chain });
 
     setLoading(false);
-  }, [q, status, priority]);
+  }, [q, status, priority, department]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -161,20 +165,79 @@ export function AdminPortal() {
                 </SkeletonRegion>
               ) : (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Stat label="Total" value={analytics?.totals.total ?? 0} icon={<Activity size={18} />} tone="cta" />
-                  <Stat label="Active" value={analytics?.totals.active ?? 0} icon={<TrendingUp size={18} />} tone="cta" />
-                  <Stat label="Pending" value={analytics?.totals.pending ?? 0} icon={<Clock size={18} />} tone="warning" />
-                  <Stat label="Resolved" value={analytics?.totals.resolved ?? 0} icon={<CheckCircle2 size={18} />} tone="success" />
-                  <Stat label="Escalated" value={analytics?.totals.escalated ?? 0} icon={<AlertTriangle size={18} />} tone="danger" />
-                  <Stat label="SLA breached" value={analytics?.totals.overdue ?? 0} icon={<FileWarning size={18} />} tone="danger" />
-                  <Stat label="New today" value={analytics?.totals.today ?? 0} icon={<Activity size={18} />} tone="cta" />
+                  <Stat label={t('stat.total')} value={analytics?.totals.total ?? 0} icon={<Activity size={18} />} tone="cta" />
+                  <Stat label={t('stat.active')} value={analytics?.totals.active ?? 0} icon={<TrendingUp size={18} />} tone="cta" />
+                  <Stat label={t('stat.pending')} value={analytics?.totals.pending ?? 0} icon={<Clock size={18} />} tone="warning" />
+                  <Stat label={t('stat.resolved')} value={analytics?.totals.resolved ?? 0} icon={<CheckCircle2 size={18} />} tone="success" />
+                  <Stat label={t('stat.escalated')} value={analytics?.totals.escalated ?? 0} icon={<AlertTriangle size={18} />} tone="danger" />
+                  <Stat label={t('stat.slaBreached')} value={analytics?.totals.overdue ?? 0} icon={<FileWarning size={18} />} tone="danger" />
+                  <Stat label={t('stat.newToday')} value={analytics?.totals.today ?? 0} icon={<Activity size={18} />} tone="cta" />
                   <Stat
-                    label="Avg resolution"
+                    label={t('stat.avgResolution')}
                     value={analytics ? `${analytics.avgResolutionHours}h` : '—'}
                     icon={<Clock size={18} />}
                     tone="cta"
                   />
                 </div>
+              )}
+
+              {/*
+                Department-wise overview.
+
+                A single flat complaint table is unusable past a few hundred
+                rows and unsafe at any size, because it pushes every record to
+                the browser and lets the UI decide what to hide. These counts
+                are aggregated server-side over the rows this principal may
+                already see, so a department admin gets their own numbers and
+                no evidence the other departments exist.
+
+                `unassigned` is deliberately first among the sub-counts: it is
+                not a status at all but the absence of an owner, which is
+                exactly the queue that grows silently when nobody is watching.
+              */}
+              {departments.length > 0 && (
+                <section aria-labelledby="departments-heading">
+                  <h2 id="departments-heading" className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-3">
+                    {t('dept.heading')}
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {departments.map(d => {
+                      const value = d.department ?? '';
+                      const selected = department === (value || 'unrouted');
+                      return (
+                        <button
+                          key={value || 'unrouted'}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            // Clicking a card filters the real query rather
+                            // than slicing an array already in memory — the
+                            // server re-runs the scope check either way.
+                            setDepartment(selected ? 'all' : (value || 'unrouted'));
+                            setTab('complaints');
+                          }}
+                          className="press surface bordered rounded-2xl p-4 text-left transition-colors hover:border-[var(--color-cta)]"
+                          style={selected ? { borderColor: 'var(--color-cta)' } : undefined}
+                        >
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-display font-bold text-content truncate">
+                              {d.department ? departmentLabel(t, d.department) : t('dept.unrouted')}
+                            </span>
+                            <span className="font-display font-bold text-2xl text-content tabular-nums">{d.total}</span>
+                          </div>
+                          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+                            <DeptCount label={t('assign.unassigned')} value={d.unassigned} tone={d.unassigned > 0 ? 'warning' : undefined} />
+                            <DeptCount label={t('wf.officer_assigned')} value={d.assigned} />
+                            <DeptCount label={t('wf.investigation_started')} value={d.investigating} />
+                            <DeptCount label={t('wf.work_in_progress')} value={d.inProgress} />
+                            <DeptCount label={t('wf.resolved')} value={d.resolved} />
+                            <DeptCount label={t('dept.overdue')} value={d.overdue} tone={d.overdue > 0 ? 'danger' : undefined} />
+                          </dl>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -423,5 +486,19 @@ function Select({ label, value, onChange, options }: {
         {options.map(o => <option key={o} value={o}>{o === 'all' ? 'All' : o.replace(/_/g, ' ')}</option>)}
       </select>
     </div>
+  );
+}
+
+/** One counter inside a department card. */
+function DeptCount({ label, value, tone }: { label: string; value: number; tone?: 'warning' | 'danger' }) {
+  const color =
+    tone === 'danger' ? 'var(--color-danger)'
+    : tone === 'warning' ? 'var(--color-warning)'
+    : 'var(--color-content-2)';
+  return (
+    <>
+      <dt className="text-content-3 truncate">{label}</dt>
+      <dd className="font-bold tabular-nums text-right" style={{ color }}>{value}</dd>
+    </>
   );
 }

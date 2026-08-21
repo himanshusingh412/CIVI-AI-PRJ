@@ -297,6 +297,19 @@ const en = {
   'assign.selectOfficer': 'Select an officer',
   'assign.noOfficersAvailable': 'No officers available for this area',
 
+  'dept.heading': 'Departments',
+  'dept.unrouted': 'Not yet routed',
+  'dept.overdue': 'Overdue',
+
+  'stat.total': 'Total',
+  'stat.active': 'Active',
+  'stat.pending': 'Pending',
+  'stat.resolved': 'Resolved',
+  'stat.escalated': 'Escalated',
+  'stat.slaBreached': 'SLA breached',
+  'stat.newToday': 'New today',
+  'stat.avgResolution': 'Avg resolution',
+
   'empty.noComplaints': 'No complaints found matching your criteria.',
   'lang.label': 'Language',
 
@@ -626,6 +639,17 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'assign.unassigned': 'अनासाइन्ड',
     'assign.selectOfficer': 'अधिकारी चुनें',
     'assign.noOfficersAvailable': 'इस क्षेत्र के लिए कोई अधिकारी उपलब्ध नहीं',
+    'dept.heading': 'विभाग',
+    'dept.unrouted': 'अभी तक निर्दिष्ट नहीं',
+    'dept.overdue': 'समय-सीमा पार',
+    'stat.total': 'कुल',
+    'stat.active': 'सक्रिय',
+    'stat.pending': 'लंबित',
+    'stat.resolved': 'हल हुईं',
+    'stat.escalated': 'उच्चीकृत',
+    'stat.slaBreached': 'एसएलए उल्लंघन',
+    'stat.newToday': 'आज नई',
+    'stat.avgResolution': 'औसत समाधान',
     'empty.noComplaints': 'आपके मापदंडों से मेल खाती कोई शिकायत नहीं मिली।', 'lang.label': 'भाषा',
   },
 

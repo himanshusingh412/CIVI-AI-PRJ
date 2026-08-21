@@ -158,7 +158,11 @@ adminRouter.get('/complaints', requirePermission('complaint:read'), async (req, 
 
     const { status, department, district, priority, q } = req.query as Record<string, string>;
     if (status) rows = rows.filter(r => r.status === status);
-    if (department) rows = rows.filter(r => r.department === department);
+    // 'unrouted' is a real filter, not a department: complaints that have
+    // not been assigned to any department are the ones most needing triage,
+    // and a plain equality check would silently return nothing for them.
+    if (department === 'unrouted') rows = rows.filter(r => !r.department);
+    else if (department) rows = rows.filter(r => r.department === department);
     if (district) rows = rows.filter(r => r.district === district);
     if (priority) rows = rows.filter(r => r.priority === priority);
     if (q) {
@@ -542,5 +546,63 @@ adminRouter.get('/officers', requirePermission('complaint:assign'), async (req, 
       }));
 
     res.json({ ok: true, count: officers.length, officers });
+  } catch (err) { return safeError(res, err); }
+});
+
+// ───────────────────────── departments ─────────────────────────
+/**
+ * GET /api/admin/departments — the department-wise overview.
+ *
+ * Exists because a single flat complaint table is unusable at scale and
+ * unsafe at any scale: it invites the client to hold every record and filter
+ * locally, which is how jurisdiction leaks. Aggregation happens here, over
+ * the rows this principal may already see (visibleTo), so a department admin
+ * gets counts for their own department and no evidence that the others exist.
+ *
+ * The counters mirror the workflow states an operator actually triages by,
+ * not the raw enum: `unassigned` is the one that matters most day to day and
+ * is not a status at all — it is the absence of an assignment, which is
+ * exactly the queue that silently grows when nobody owns it.
+ */
+adminRouter.get('/departments', requirePermission('complaint:read'), async (req, res) => {
+  try {
+    const p = principalOf(req);
+    const rows = visibleTo(p, await store.list());
+
+    const OPEN_NEW: Status[] = ['submitted', 'ai_verification'];
+    const INVESTIGATING: Status[] = ['investigation_started', 'field_visit_scheduled', 'evidence_uploaded'];
+    const RESOLVED: Status[] = ['resolved', 'citizen_verification', 'closed'];
+
+    const buckets = new Map<string, Complaint[]>();
+    for (const r of rows) {
+      // Complaints not yet routed to a department are real and must not be
+      // dropped from the overview — they are the ones needing triage most.
+      const key = r.department ?? '__unrouted__';
+      const list = buckets.get(key) ?? [];
+      list.push(r);
+      buckets.set(key, list);
+    }
+
+    const departments = [...buckets.entries()]
+      .map(([department, list]) => ({
+        // The stable value the client filters on and translates for display.
+        department: department === '__unrouted__' ? null : department,
+        total: list.length,
+        new: list.filter(c => OPEN_NEW.includes(c.status as Status)).length,
+        unassigned: list.filter(c => !c.assignedOfficerId && !isTerminal(c.status)).length,
+        assigned: list.filter(c => c.assignedOfficerId && c.status === 'officer_assigned').length,
+        investigating: list.filter(c => INVESTIGATING.includes(c.status as Status)).length,
+        inProgress: list.filter(c => c.status === 'work_in_progress').length,
+        resolved: list.filter(c => RESOLVED.includes(c.status as Status)).length,
+        escalated: list.filter(c => c.escalationLevel > 0 && !isTerminal(c.status)).length,
+        overdue: list.filter(c => Date.parse(c.slaDeadline) < Date.now() && !isTerminal(c.status)).length,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    res.json({
+      ok: true,
+      total: rows.length,
+      departments,
+    });
   } catch (err) { return safeError(res, err); }
 });
