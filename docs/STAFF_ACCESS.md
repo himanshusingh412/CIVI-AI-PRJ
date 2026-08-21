@@ -166,3 +166,31 @@ curl -s -b ck.txt 'https://<domain>/api/admin/complaints?limit=200' \
 `tests/staff-provisioning.test.ts` pins the same contract locally, in both
 directions: a matched pair resolves to the full scope, and a drifted one
 grants nothing rather than something partial.
+
+## Checking the scope actually stops people
+
+Filtering a list is the easy half. The half worth testing is whether the
+scope still holds when someone asks for a specific record by id:
+
+```bash
+python3 scripts/authz-smoke.py ~/civicai-staff-credentials/CREDENTIALS.txt
+```
+
+It signs in as three roles and verifies seven things against the live
+deployment. Two shapes of refusal, and the difference is deliberate:
+
+| | meaning |
+|---|---|
+| `403 forbidden` | you may see this record, but not do that to it |
+| `404 not_found` | you may not know whether this record exists |
+
+Anything outside your jurisdiction gets the second. A `403` there would
+confirm the record exists, which is enough to enumerate another department's
+complaints one id at a time — so a Water officer asking for an Electricity
+complaint is told it does not exist. The control that proves this is the
+scope check rather than a genuinely missing row is the *same* id returning
+`200` for the Electricity officer.
+
+Note that a bare `403` is never accepted as evidence of anything: the CSRF
+guard returns `403` as well, so a check that forgets the token passes while
+having tested nothing. Match on the error code, not the status.
