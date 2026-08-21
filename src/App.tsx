@@ -207,7 +207,7 @@ export default function App() {
   /** Every pending bot timeout, so they can be cancelled on unmount. */
   const botTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-  const { status, user, onSignedIn, signOut, signingOut } = useAuth();
+  const { status, user, identity, onSignedIn, signOut, signingOut } = useAuth();
   const { isDark: isDarkMode, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const isAuthenticated = status === 'authenticated';
@@ -953,6 +953,27 @@ export default function App() {
             >
               <LayoutDashboard size={16} aria-hidden="true" /> Dashboard
             </button>
+
+            {/* Logged in Citizen Details Badge */}
+            {(user || identity) && (
+              <div
+                className="hidden sm:flex items-center gap-2.5 px-3 h-10 rounded-xl surface-2 border"
+                style={{ borderColor: 'var(--color-border)' }}
+                title={`Signed in as ${identity?.displayName || 'Citizen'} (${user?.identifier || ''})`}
+              >
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cta to-saffron text-white font-bold text-xs grid place-items-center uppercase shadow-sm">
+                  {(identity?.displayName || user?.identifier || 'C').charAt(0)}
+                </div>
+                <div className="flex flex-col text-left leading-tight">
+                  <span className="text-[12px] font-bold text-content truncate max-w-[130px]">
+                    {identity?.displayName || 'Citizen'}
+                  </span>
+                  <span className="text-[10px] text-content-3 font-mono truncate max-w-[130px]">
+                    {user?.identifier || 'Citizen Account'}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handleLogout}

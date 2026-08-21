@@ -9,6 +9,7 @@ import { IntegrationBadge } from '../components/IntegrationBadge';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { useTheme } from '../context/ThemeContext';
 import { useI18n } from '../i18n/I18nContext';
+import { useAuth } from '../context/AuthContext';
 import {
   getSession, uploadDocument, removeDocument, clearDocuments, forgetEverything,
   verifyDocuments, startDigiLocker, listDigiLockerDocuments, importDigiLockerDocuments,
@@ -57,6 +58,7 @@ const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
 export function DocumentVerificationPage() {
   const { t } = useI18n();
   const { isDark, toggleTheme } = useTheme();
+  const { user, identity } = useAuth();
   const [params, setParams] = useSearchParams();
 
   const [session, setSession] = useState<DocumentSession | null>(null);
@@ -137,7 +139,17 @@ export function DocumentVerificationPage() {
             Check before you apply
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {(user || identity) && (
+            <div className="hidden md:flex items-center gap-2 px-2.5 h-8 rounded-xl surface-2 border text-xs" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-cta to-saffron text-white font-bold text-[10px] grid place-items-center uppercase">
+                {(identity?.displayName || user?.identifier || 'C').charAt(0)}
+              </div>
+              <span className="font-bold text-content text-[11px] truncate max-w-[140px]">
+                {identity?.displayName || user?.identifier}
+              </span>
+            </div>
+          )}
           <span className="hidden sm:inline-flex"><IntegrationBadge integrationKey="ocr" size="xs" /></span>
           <LanguagePicker compact />
           <button onClick={toggleTheme}

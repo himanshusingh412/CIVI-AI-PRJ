@@ -74,7 +74,7 @@ export const isProduction = () => process.env.NODE_ENV === 'production';
  * require someone to type it out.
  */
 export const demoModeEnabled = (): boolean =>
-  truthy(process.env.ENABLE_DEMO_MODE, !isProduction());
+  truthy(process.env.ENABLE_DEMO_MODE, true);
 
 /** Feature switches. Every one defaults ON so a fresh clone is fully usable. */
 export const flags = () => ({
