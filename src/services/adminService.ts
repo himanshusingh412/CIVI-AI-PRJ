@@ -56,6 +56,13 @@ export type AdminComplaint = {
   description: string;
   state: string;
   district: string;
+  /**
+   * Local area. Present on the server record and in the API projection but
+   * absent from this type until now — which meant the assignment UI could not
+   * narrow the officer dropdown by ward, the very dimension that makes area
+   * officers distinct in the first place.
+   */
+  ward?: string;
   department?: string;
   assignedOfficerId?: string;
   assignedOfficerName?: string;

@@ -320,6 +320,14 @@ const en = {
   'adminLogin.notStaff': 'Not staff? Back to home',
   'adminLogin.notice': 'Authorised personnel only. Access is logged and audited.',
 
+  'assign.assign': 'Assign officer',
+  'assign.reassign': 'Reassign officer',
+  'assign.confirm': 'Confirm',
+  'assign.cancel': 'Cancel',
+  'assign.saving': 'Saving…',
+  'assign.notAssignedYet': 'Not assigned to an officer yet.',
+  'assign.reasonPlaceholder': 'Why is this being reassigned?',
+
   'empty.noComplaints': 'No complaints found matching your criteria.',
   'lang.label': 'Language',
 
@@ -669,6 +677,13 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'adminLogin.signingIn': 'साइन इन किया जा रहा है…',
     'adminLogin.notStaff': 'कर्मचारी नहीं हैं? मुखपृष्ठ पर लौटें',
     'adminLogin.notice': 'केवल अधिकृत कर्मियों के लिए। पहुँच दर्ज और लेखा-परीक्षित की जाती है।',
+    'assign.assign': 'अधिकारी नियुक्त करें',
+    'assign.reassign': 'अधिकारी बदलें',
+    'assign.confirm': 'पुष्टि करें',
+    'assign.cancel': 'रद्द करें',
+    'assign.saving': 'सहेजा जा रहा है…',
+    'assign.notAssignedYet': 'अभी तक किसी अधिकारी को नहीं सौंपी गई।',
+    'assign.reasonPlaceholder': 'यह क्यों बदली जा रही है?',
     'empty.noComplaints': 'आपके मापदंडों से मेल खाती कोई शिकायत नहीं मिली।', 'lang.label': 'भाषा',
   },
 

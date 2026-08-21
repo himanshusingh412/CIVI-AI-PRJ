@@ -5,6 +5,7 @@ import { Button } from '../Button';
 import { changeStatus, addNote, isAuthError, type AdminComplaint } from '../../services/adminService';
 import { useT } from '../../i18n/I18nContext';
 import { statusLabel, departmentLabel, roleLabel } from '../../i18n/labels';
+import { AssignOfficer } from './AssignOfficer';
 
 const PRIORITY_TOKEN: Record<string, string> = {
   Critical: 'var(--color-priority-critical)',
@@ -313,6 +314,20 @@ export function ComplaintDrawer({
             three weeks ago. Who handed it over, and when, is what makes the
             assignment auditable, so the two are shown together or not at all.
           */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">
+              {t('assign.assignment')}
+            </p>
+            {/* Shown even when nothing is assigned yet — an unassigned
+                complaint is precisely the one that needs this control. */}
+            {!complaint.assignment && (
+              <div className="mb-3">
+                <p className="text-[13px] text-content-3 mb-2">{t('assign.notAssignedYet')}</p>
+                <AssignOfficer complaint={complaint} onAssigned={onUpdated} />
+              </div>
+            )}
+          </div>
+
           {complaint.assignment && (
             <div>
               <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">
@@ -383,6 +398,10 @@ export function ComplaintDrawer({
                     </ul>
                   </details>
                 )}
+
+                <div className="pt-1">
+                  <AssignOfficer complaint={complaint} onAssigned={onUpdated} />
+                </div>
               </div>
             </div>
           )}
