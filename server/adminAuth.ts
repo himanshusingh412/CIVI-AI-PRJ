@@ -272,9 +272,6 @@ export async function verifyAdminLogin(
     return { ok: false, reason: 'invalid_credentials' };
   }
 
-  const retryAfterSec = lockedFor(employeeId);
-  if (retryAfterSec) return { ok: false, reason: 'locked_out', retryAfterSec };
-
   await warmDemoCredential();
   const creds = directory();
   const normInput = employeeId.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -285,6 +282,9 @@ export async function verifyAdminLogin(
     const numInput = normInput.replace(/^emp?/, '');
     return numKey.length > 0 && numKey === numInput;
   });
+
+  const retryAfterSec = found ? 0 : lockedFor(employeeId);
+  if (retryAfterSec) return { ok: false, reason: 'locked_out', retryAfterSec };
 
   if (!found) {
     // Spend comparable work on a dummy so "no such employee" and "wrong

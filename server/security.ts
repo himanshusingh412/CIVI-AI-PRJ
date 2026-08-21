@@ -153,7 +153,7 @@ export async function checkNotBot(body: any, ip: string): Promise<{ ok: boolean 
   if (typeof body?.company === 'string' && body.company.trim() !== '') return { ok: false };
 
   const elapsed = Number(body?.formElapsedMs);
-  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 1200) return { ok: false };
+  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 150) return { ok: false };
 
   if (TURNSTILE_SECRET) {
     const token = String(body?.captchaToken || '');
