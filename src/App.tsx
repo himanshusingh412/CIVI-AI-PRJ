@@ -33,6 +33,7 @@ import {
   X,
   Locate,
   Briefcase,
+  User,
   Gauge,
   Sparkles as SparklesIcon,
   FileSearch as FileSearchIcon,
@@ -1017,9 +1018,9 @@ export default function App() {
             label={t('nav.assistant')}
           />
           <SidebarItem
-            onClick={() => navigate('/portal/documents')}
-            icon={<FileSearchIcon size={18} />}
-            label={t('nav.documents')}
+            onClick={() => navigate('/portal/profile')}
+            icon={<User size={18} />}
+            label="My Profile"
           />
           <SidebarItem
             onClick={() => navigate('/portal/settings')}

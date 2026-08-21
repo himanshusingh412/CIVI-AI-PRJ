@@ -77,6 +77,8 @@ const AssistantPage = lazy(() =>
   import('./pages/AssistantPage.tsx').then(m => ({ default: m.AssistantPage })));
 const DocumentVerificationPage = lazy(() =>
   import('./pages/DocumentVerificationPage.tsx').then(m => ({ default: m.DocumentVerificationPage })));
+const CitizenProfilePage = lazy(() =>
+  import('./pages/CitizenProfilePage.tsx').then(m => ({ default: m.CitizenProfilePage })));
 const ReportWizardPage = lazy(() =>
   import('./pages/ReportWizardPage.tsx').then(m => ({ default: m.ReportWizardPage })));
 const NotificationSettingsPage = lazy(() =>
@@ -170,11 +172,21 @@ createRoot(container).render(
                     }
                   />
                   <Route
+                    path="/portal/profile"
+                    element={
+                      <RequireAuth>
+                        <Suspense fallback={<LoadingScreen label="Opening your profile…" />}>
+                          <CitizenProfilePage initialTab="profile" />
+                        </Suspense>
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
                     path="/portal/documents"
                     element={
                       <RequireAuth>
                         <Suspense fallback={<LoadingScreen label="Opening document verification…" />}>
-                          <DocumentVerificationPage />
+                          <CitizenProfilePage initialTab="documents" />
                         </Suspense>
                       </RequireAuth>
                     }
