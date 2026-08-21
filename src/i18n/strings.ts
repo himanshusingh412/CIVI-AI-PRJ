@@ -70,7 +70,7 @@ const en = {
   'auth.backHome': 'Back to home',
   'auth.notStaffBackHome': 'Not staff? Back to home',
   'auth.change': 'Change',
-  'auth.trustLine': 'Government-verified · Codes are hashed, never stored in plain text',
+  'auth.trustLine': 'Secure authentication • Verification codes are handled by Firebase',
 
   'auth.phoneLabel': 'Mobile number',
   'auth.phonePlaceholder': '93057 27103',
@@ -552,7 +552,7 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'auth.backHome': 'मुखपृष्ठ पर लौटें',
     'auth.notStaffBackHome': 'कर्मचारी नहीं हैं? मुखपृष्ठ पर लौटें',
     'auth.change': 'बदलें',
-    'auth.trustLine': 'सरकार-सत्यापित · कोड हैश किए जाते हैं, कभी सादे रूप में संग्रहीत नहीं',
+    'auth.trustLine': 'सुरक्षित प्रमाणीकरण • सत्यापन कोड फ़ायरबेस द्वारा संचालित',
     'auth.phoneLabel': 'मोबाइल नंबर',
     'auth.phonePlaceholder': '93057 27103',
     'auth.phoneHint': 'हम इस नंबर पर 6 अंकों का कोड भेजेंगे।',

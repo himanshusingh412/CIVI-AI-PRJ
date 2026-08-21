@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { ConfirmationResult, RecaptchaVerifier } from 'firebase/auth';
 import { Smartphone, ChevronRight, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { Button } from './Button';
@@ -8,7 +8,7 @@ import {
   sendFirebasePhoneOtp,
   confirmFirebasePhoneOtp,
 } from '../lib/firebase';
-import { firebaseSignIn, requestOtp, verifyOtp, isAuthError, validatePhone, type AuthUser } from '../services/authService';
+import { firebaseSignIn, validatePhone, type AuthUser } from '../services/authService';
 import { useI18n } from '../i18n/I18nContext';
 
 interface FirebasePhoneAuthUIProps {
@@ -17,33 +17,11 @@ interface FirebasePhoneAuthUIProps {
 }
 
 /**
- * A Firebase *test* phone number and its fixed code, surfaced on screen so a
- * demo does not depend on a real handset receiving a real SMS.
- *
- * Both values come from build-time config and default to empty, so a
- * deployment that sets neither shows nothing. This is deliberately NOT
- * inferred: the client cannot ask Firebase which numbers are test numbers,
- * and guessing would risk printing something that looks like a live code.
- *
- * Why showing this is not a credential leak: a Firebase test number never
- * receives an SMS and its code is a fixed value configured in the Firebase
- * console — it is a shared demo credential, in the same category as seeded
- * demo accounts, not a one-time secret. It is nonetheless revealed only once
- * the visitor has already typed that exact number (see `showDemoHint`),
- * rather than advertised to everyone who opens the page.
+ * A Firebase test phone number and code, surfaced on screen if configured in env.
  */
 const DEMO_PHONE = String((import.meta as any).env?.VITE_DEMO_PHONE ?? '').replace(/\D/g, '').slice(-10);
 const DEMO_OTP = String((import.meta as any).env?.VITE_DEMO_OTP ?? '').trim();
 
-/**
- * The demo code, shown in place.
- *
- * Styled as a warning rather than as neutral help text on purpose. Anything
- * that hands a working credential to whoever is looking at the screen should
- * announce that it is a demo affordance — the failure mode to design against
- * is a reviewer seeing a code appear and concluding the app prints real
- * one-time passwords.
- */
 const DemoCodeCallout: React.FC<{
   code: string;
   t: (k: any) => string;
@@ -83,6 +61,41 @@ const DemoCodeCallout: React.FC<{
   </div>
 );
 
+function mapFirebaseError(err: any): string {
+  const code = err?.code || '';
+  const message = err?.message || '';
+
+  if (code === 'auth/invalid-phone-number' || message.includes('invalid-phone-number')) {
+    return 'Please enter a valid 10-digit mobile number.';
+  }
+  if (code === 'auth/too-many-requests' || message.includes('too-many-requests')) {
+    return 'Too many attempts from this device. Please wait a few minutes before trying again.';
+  }
+  if (code === 'auth/quota-exceeded' || message.includes('quota-exceeded')) {
+    return 'SMS verification limit reached for this project. Please try again later.';
+  }
+  if (code === 'auth/invalid-verification-code' || message.includes('invalid-verification-code')) {
+    return 'Invalid verification code. Please check and try again.';
+  }
+  if (code === 'auth/code-expired' || message.includes('code-expired')) {
+    return 'This verification code has expired. Please request a new code.';
+  }
+  if (code === 'auth/captcha-check-failed' || message.includes('captcha-check-failed')) {
+    return 'reCAPTCHA verification failed. Please try again.';
+  }
+  if (code === 'auth/network-request-failed' || message.includes('network-request-failed')) {
+    return 'Network error. Please check your connection and try again.';
+  }
+  if (code === 'auth/operation-not-allowed' || message.includes('operation-not-allowed')) {
+    return 'Phone authentication is not enabled in Firebase Console.';
+  }
+  if (code === 'auth/unauthorized-domain' || message.includes('unauthorized-domain') || message.includes('authDomain')) {
+    return 'Domain unauthorized in Firebase Console. Please add civi-ai-prj.vercel.app under Firebase > Authentication > Settings > Authorized Domains.';
+  }
+
+  return message || 'Unable to send verification code. Please try again.';
+}
+
 export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSignedIn, onError }) => {
   const { t } = useI18n();
   const [step, setStep] = useState<'phone' | 'code'>('phone');
@@ -91,8 +104,6 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
-  const [isBackendFallback, setIsBackendFallback] = useState(false);
-  const [backendDevOtp, setBackendDevOtp] = useState<string | null>(null);
 
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
@@ -110,17 +121,39 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
     }
   }, [step]);
 
+  const cleanupRecaptcha = useCallback(() => {
+    if (recaptchaVerifierRef.current) {
+      try {
+        recaptchaVerifierRef.current.clear();
+      } catch {
+        /* ignore clear errors */
+      }
+      recaptchaVerifierRef.current = null;
+    }
+    const container = document.getElementById('firebase-recaptcha-container');
+    if (container) {
+      container.innerHTML = '';
+    }
+  }, []);
+
   // Clean up recaptcha verifier on unmount
   useEffect(() => {
     return () => {
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear();
-        } catch {
-          /* ignore */
-        }
-      }
+      cleanupRecaptcha();
     };
+  }, [cleanupRecaptcha]);
+
+  const getOrCreateRecaptchaVerifier = useCallback((): RecaptchaVerifier => {
+    if (recaptchaVerifierRef.current) {
+      return recaptchaVerifierRef.current;
+    }
+    const container = document.getElementById('firebase-recaptcha-container');
+    if (container) {
+      container.innerHTML = '';
+    }
+    const verifier = initRecaptchaVerifier('firebase-recaptcha-container', 'invisible');
+    recaptchaVerifierRef.current = verifier;
+    return verifier;
   }, []);
 
   if (!isFirebaseConfigured()) {
@@ -133,47 +166,22 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
 
   const handleSendOtp = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (loading) return;
+
     setError(null);
     onError?.('');
 
     const validation = validatePhone(phone);
     if (!validation.ok) {
-      setError(validation.reason || 'Invalid phone number');
+      setError(validation.reason || 'Please enter a valid 10-digit mobile number.');
       return;
     }
 
     const digitsOnly = phone.replace(/\D/g, '').slice(-10);
     const e164Phone = `+91${digitsOnly}`;
 
-    if (isBackendFallback) {
-      setLoading(true);
-      const res = await requestOtp(e164Phone, { formElapsedMs: 1500, company: '' });
-      setLoading(false);
-      if (isAuthError(res)) {
-        setError(res.message);
-        onError?.(res.message);
-        return;
-      }
-      if (res.devOtp) setBackendDevOtp(res.devOtp);
-      setStep('code');
-      setResendIn(30);
-      return;
-    }
-
-    const getOrCreateRecaptchaVerifier = (): RecaptchaVerifier => {
-      if (recaptchaVerifierRef.current) {
-        return recaptchaVerifierRef.current;
-      }
-      const container = document.getElementById('firebase-recaptcha-container');
-      if (container) {
-        container.innerHTML = '';
-      }
-      const verifier = initRecaptchaVerifier('firebase-recaptcha-container', 'invisible');
-      recaptchaVerifierRef.current = verifier;
-      return verifier;
-    };
-
     setLoading(true);
+
     try {
       const verifier = getOrCreateRecaptchaVerifier();
       const confirmation = await sendFirebasePhoneOtp(e164Phone, verifier);
@@ -183,54 +191,11 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
       setResendIn(30);
       setLoading(false);
     } catch (err: any) {
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear();
-        } catch {
-          /* ignore */
-        }
-        recaptchaVerifierRef.current = null;
-      }
-      const container = document.getElementById('firebase-recaptcha-container');
-      if (container) container.innerHTML = '';
-
       console.error('[Firebase Phone Auth] Error sending OTP:', err);
-      let msg = err?.message || 'Failed to send SMS OTP via Firebase.';
-
-      // Fallback to CivicAI backend OTP if Firebase SMS billing is disabled or quota exceeded
-      if (
-        err?.code === 'auth/billing-not-enabled' ||
-        msg.includes('billing-not-enabled') ||
-        err?.code === 'auth/operation-not-allowed' ||
-        msg.includes('quota-exceeded')
-      ) {
-        console.warn('[Firebase Phone Auth] Firebase SMS restricted. Falling back to CivicAI backend OTP.');
-        try {
-          const res = await requestOtp(e164Phone, { formElapsedMs: 1500, company: '' });
-          setLoading(false);
-          if (isAuthError(res)) {
-            setError(res.message);
-            onError?.(res.message);
-            return;
-          }
-          setIsBackendFallback(true);
-          if (res.devOtp) setBackendDevOtp(res.devOtp);
-          setStep('code');
-          setResendIn(30);
-          return;
-        } catch (fbErr: any) {
-          setLoading(false);
-          setError(fbErr?.message || 'Failed to request OTP code.');
-          return;
-        }
-      }
-
+      cleanupRecaptcha();
       setLoading(false);
-      if (err?.code === 'auth/invalid-phone-number') {
-        msg = 'That mobile number doesn’t look right. Enter a 10-digit Indian number.';
-      } else if (err?.code === 'auth/too-many-requests') {
-        msg = 'Too many attempts from this device. Please wait a few minutes before trying again.';
-      }
+
+      const msg = mapFirebaseError(err);
       setError(msg);
       onError?.(msg);
     }
@@ -238,31 +203,12 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
 
   const handleVerifyOtp = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (loading) return;
+
     setError(null);
 
     if (!/^\d{6}$/.test(otp)) {
       setError('Enter the 6-digit verification code.');
-      return;
-    }
-
-    if (isBackendFallback) {
-      setLoading(true);
-      try {
-        const digitsOnly = phone.replace(/\D/g, '').slice(-10);
-        const res = await verifyOtp(`+91${digitsOnly}`, otp);
-        setLoading(false);
-
-        if (isAuthError(res)) {
-          setError(res.message);
-          onError?.(res.message);
-          return;
-        }
-
-        onSignedIn({ identifier: res.identifier, channel: res.channel });
-      } catch (err: any) {
-        setLoading(false);
-        setError(err?.message || 'Verification failed.');
-      }
       return;
     }
 
@@ -278,9 +224,10 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
       const res = await firebaseSignIn(idToken);
       setLoading(false);
 
-      if (isAuthError(res)) {
-        setError(res.message);
-        onError?.(res.message);
+      if (!res || (res as any).error) {
+        const msg = (res as any)?.message || 'Authentication failed.';
+        setError(msg);
+        onError?.(msg);
         return;
       }
 
@@ -288,33 +235,23 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
     } catch (err: any) {
       setLoading(false);
       console.error('[Firebase Phone Auth] Error confirming OTP:', err);
-      const msg = err?.code === 'auth/invalid-verification-code'
-        ? 'Invalid verification code. Please check and try again.'
-        : err?.message || 'Verification failed.';
+      const msg = mapFirebaseError(err);
       setError(msg);
       onError?.(msg);
     }
   };
 
   const handleBackToPhone = () => {
+    cleanupRecaptcha();
+    confirmationRef.current = null;
     setStep('phone');
     setOtp('');
     setError(null);
   };
 
   const phoneValid = validatePhone(phone).ok;
-
-  /*
-   * Reveal the demo code only once the visitor has typed the demo number
-   * itself. Comparing on the last 10 digits matches how the number is
-   * normalised before it is sent to Firebase, so "09305727103",
-   * "+91 93057 27103" and "9305727103" all count as the same number here -
-   * otherwise the hint would fail to appear for exactly the formatting a
-   * person is most likely to use.
-   */
   const showDemoHint =
     !!DEMO_PHONE && !!DEMO_OTP && phone.replace(/\D/g, '').slice(-10) === DEMO_PHONE;
-  const effectiveDemoCode = backendDevOtp || (showDemoHint ? DEMO_OTP : null);
 
   return (
     <div className="w-full my-2">
@@ -373,7 +310,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
               {t('auth.phoneHint')}
             </p>
 
-            {effectiveDemoCode && <DemoCodeCallout code={effectiveDemoCode} t={t} />}
+            {showDemoHint && <DemoCodeCallout code={DEMO_OTP} t={t} />}
           </div>
 
           <Button
@@ -430,10 +367,7 @@ export const FirebasePhoneAuthUI: React.FC<FirebasePhoneAuthUIProps> = ({ onSign
               {t('auth.otpHint')}
             </p>
 
-            {/* Repeated on the code step: this is where the number is
-                actually needed, and by now the visitor has navigated away
-                from where they first saw it. */}
-            {effectiveDemoCode && <DemoCodeCallout code={effectiveDemoCode} t={t} onUse={() => setOtp(effectiveDemoCode)} />}
+            {showDemoHint && <DemoCodeCallout code={DEMO_OTP} t={t} onUse={() => setOtp(DEMO_OTP)} />}
           </div>
 
           <Button
