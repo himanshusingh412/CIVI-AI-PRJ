@@ -109,26 +109,34 @@ type Credential = {
 let cache: { raw: string; creds: Credential[] } | null = null;
 
 function directory(): Credential[] {
+  const demo = demoCredentials();
   const raw = process.env.ADMIN_CREDENTIALS || '';
-  if (!raw.trim()) return demoCredentials();
-  if (cache?.raw === raw) return cache.creds;
+  let envCreds: Credential[] = [];
 
-  let creds: Credential[] = [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      creds = parsed.filter(
-        (c: any) => c && typeof c.employeeId === 'string' && typeof c.subject === 'string'
-          && typeof c.passwordHash === 'string',
-      );
-    } else {
-      console.error('[adminAuth] ADMIN_CREDENTIALS must be a JSON array — ignored.');
+  if (raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        envCreds = parsed.filter(
+          (c: any) => c && typeof c.employeeId === 'string' && typeof c.subject === 'string'
+            && typeof c.passwordHash === 'string',
+        );
+      } else {
+        console.error('[adminAuth] ADMIN_CREDENTIALS must be a JSON array — ignored.');
+      }
+    } catch {
+      console.error('[adminAuth] ADMIN_CREDENTIALS is not valid JSON — ignored.');
     }
-  } catch {
-    console.error('[adminAuth] ADMIN_CREDENTIALS is not valid JSON — ignored.');
   }
-  cache = { raw, creds };
-  return creds;
+
+  const map = new Map<string, Credential>();
+  for (const c of demo) {
+    map.set(c.employeeId.toLowerCase(), c);
+  }
+  for (const c of envCreds) {
+    map.set(c.employeeId.toLowerCase(), c);
+  }
+  return Array.from(map.values());
 }
 
 /**
@@ -269,7 +277,14 @@ export async function verifyAdminLogin(
 
   await warmDemoCredential();
   const creds = directory();
-  const found = creds.find(c => c.employeeId.toLowerCase() === employeeId.toLowerCase());
+  const normInput = employeeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const found = creds.find(c => {
+    const normKey = c.employeeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (normKey === normInput) return true;
+    const numKey = normKey.replace(/^emp?/, '');
+    const numInput = normInput.replace(/^emp?/, '');
+    return numKey.length > 0 && numKey === numInput;
+  });
 
   if (!found) {
     // Spend comparable work on a dummy so "no such employee" and "wrong
