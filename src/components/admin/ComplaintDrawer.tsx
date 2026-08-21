@@ -4,7 +4,7 @@ import { X, Clock, MapPin, User, Building2, AlertTriangle, ShieldCheck, Image, M
 import { Button } from '../Button';
 import { changeStatus, addNote, isAuthError, type AdminComplaint } from '../../services/adminService';
 import { useT } from '../../i18n/I18nContext';
-import { statusLabel } from '../../i18n/labels';
+import { statusLabel, departmentLabel, roleLabel } from '../../i18n/labels';
 
 const PRIORITY_TOKEN: Record<string, string> = {
   Critical: 'var(--color-priority-critical)',
@@ -31,11 +31,11 @@ export function ComplaintDrawer({
   onClose: () => void;
   onUpdated: (c: AdminComplaint) => void;
 }) {
-  const t = useT();
   // `t` is the translate function throughout this file. The transition and
   // timeline maps below were originally written as `.map(t => …)`, which
   // shadowed it in exactly two branches; they now bind `tx` and `ev` so that
   // `t` means one thing everywhere in this component.
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [noteVisibility, setNoteVisibility] = useState<'internal' | 'public'>('internal');
@@ -304,6 +304,88 @@ export function ComplaintDrawer({
               </>
             )}
           </div>
+
+          {/*
+            Assignment panel.
+            Deliberately its own block rather than a line in the field grid:
+            "assigned to Amit Sharma" on its own is unfalsifiable — there is
+            no way to tell a deliberate routing decision from a mis-click
+            three weeks ago. Who handed it over, and when, is what makes the
+            assignment auditable, so the two are shown together or not at all.
+          */}
+          {complaint.assignment && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">
+                {t('assign.assignment')}
+              </p>
+              <div className="surface-2 rounded-xl p-4 space-y-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-content-3">{t('assign.assignedTo')}</p>
+                  <p className="text-sm font-bold text-content">
+                    {complaint.assignment.officerName}
+                    {complaint.assignment.employeeId && (
+                      <span className="ml-2 font-mono text-[11px] font-semibold text-content-3">
+                        {complaint.assignment.employeeId}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-[12px] text-content-3">
+                    {[
+                      departmentLabel(t, complaint.assignment.department),
+                      complaint.assignment.district,
+                      complaint.assignment.ward,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-content-3">{t('assign.assignedBy')}</p>
+                  <p className="text-sm font-semibold text-content">
+                    {complaint.assignment.assignedByName}
+                  </p>
+                  <p className="text-[12px] text-content-3">{roleLabel(t, complaint.assignment.assignedByRole)}</p>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-content-3">{t('assign.assignedOn')}</p>
+                  <p className="text-[13px] text-content-2">
+                    {new Date(complaint.assignment.assignedAt).toLocaleString()}
+                  </p>
+                </div>
+
+                {complaint.assignment.reason && (
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-content-3">{t('assign.reason')}</p>
+                    <p className="text-[13px] text-content-2">{complaint.assignment.reason}</p>
+                  </div>
+                )}
+
+                {/* Prior holders. Only rendered once there IS a prior holder,
+                    so an ordinary single-assignment complaint stays quiet. */}
+                {(complaint.assignmentHistory?.length ?? 0) > 1 && (
+                  <details className="pt-1">
+                    <summary className="text-[12px] font-semibold text-cta cursor-pointer">
+                      {t('assign.previousAssignments')}
+                    </summary>
+                    <ul className="mt-2 space-y-2">
+                      {complaint.assignmentHistory!
+                        .filter(a => !a.isCurrent)
+                        .reverse()
+                        .map((a, i) => (
+                          <li key={`${a.officerId}-${a.assignedAt}-${i}`} className="text-[12px] text-content-3">
+                            <span className="font-semibold text-content-2">{a.officerName}</span>
+                            {' · '}
+                            {new Date(a.assignedAt).toLocaleDateString()}
+                            {a.unassignedAt && ` → ${new Date(a.unassignedAt).toLocaleDateString()}`}
+                            {a.reason && <span className="block italic">{a.reason}</span>}
+                          </li>
+                        ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Timeline */}
           <div>

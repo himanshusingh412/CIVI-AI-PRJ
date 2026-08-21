@@ -287,6 +287,16 @@ const en = {
   'app.statusCheck': 'Status Check',
   'app.emergency': 'Emergency',
 
+  'assign.assignment': 'Assignment',
+  'assign.assignedTo': 'Assigned to',
+  'assign.assignedBy': 'Assigned by',
+  'assign.assignedOn': 'Assigned on',
+  'assign.reason': 'Reason',
+  'assign.previousAssignments': 'Previous assignments',
+  'assign.unassigned': 'Unassigned',
+  'assign.selectOfficer': 'Select an officer',
+  'assign.noOfficersAvailable': 'No officers available for this area',
+
   'empty.noComplaints': 'No complaints found matching your criteria.',
   'lang.label': 'Language',
 
@@ -607,6 +617,15 @@ export const STRINGS: Record<LangType, Partials> & { en: typeof en } = {
     'app.registerAComplaint': 'शिकायत दर्ज करें',
     'app.statusCheck': 'स्थिति जाँचें',
     'app.emergency': 'आपातकाल',
+    'assign.assignment': 'आवंटन',
+    'assign.assignedTo': 'सौंपा गया',
+    'assign.assignedBy': 'द्वारा सौंपा गया',
+    'assign.assignedOn': 'सौंपने की तिथि',
+    'assign.reason': 'कारण',
+    'assign.previousAssignments': 'पिछले आवंटन',
+    'assign.unassigned': 'अनासाइन्ड',
+    'assign.selectOfficer': 'अधिकारी चुनें',
+    'assign.noOfficersAvailable': 'इस क्षेत्र के लिए कोई अधिकारी उपलब्ध नहीं',
     'empty.noComplaints': 'आपके मापदंडों से मेल खाती कोई शिकायत नहीं मिली।', 'lang.label': 'भाषा',
   },
 

@@ -15,6 +15,7 @@ import { tokenFromRequest, safeError } from './security.js';
 import { ipOf } from './rateLimit.js';
 import { notify, type NotificationEvent } from './notifications.js';
 import { runSlaSweep } from './sla.js';
+import { assignableOfficers, resolveAssignee } from './officers.js';
 
 /**
  * Admin API. Every route is guarded by `requirePermission`, which checks
@@ -118,6 +119,14 @@ function project(c: Complaint, p: Principal) {
       statusLabel: STATUS_LABELS[t.status] ?? String(t.status),
     })),
     progress: STATUS_PROGRESS[c.status],
+    /*
+     * Assignment travels with the complaint so the drawer can show WHO holds
+     * it and WHO handed it over. Both are admin-side facts: `project()` is
+     * only ever used for /api/admin responses, and the citizen-facing
+     * projection (server/complaints.ts toPublic) does not include them.
+     */
+    assignment: c.assignment ?? null,
+    assignmentHistory: c.assignmentHistory ?? [],
     isTerminal: isTerminal(c.status),
     availableTransitions: allowedTransitions(c.status, p.role).map(t => ({
       to: t.to, label: t.label, toLabel: STATUS_LABELS[t.to],
@@ -274,17 +283,72 @@ adminRouter.post('/complaints/:id/assign', requirePermission('complaint:assign')
     }
 
     const officerId = String(req.body?.officerId || '').slice(0, 64);
-    const officerName = String(req.body?.officerName || '').slice(0, 120);
+    const reason = String(req.body?.reason || '').slice(0, 300).trim() || undefined;
     if (!officerId) return res.status(400).json({ error: 'bad_request', message: 'officerId is required.' });
 
+    /*
+     * The officer is RESOLVED, not accepted.
+     *
+     * This endpoint previously took both the id and the display name from
+     * the request body without checking either. That made assignment a way
+     * to grant access rather than merely route work: rbac.inScope() lets a
+     * field officer read complaints where assignedOfficerId matches their
+     * own scope, so writing an arbitrary id handed that complaint to
+     * whoever holds it — and the name shown next to it was whatever the
+     * browser typed. See the header of server/officers.ts.
+     */
+    const resolved = await resolveAssignee(p, officerId, {
+      state: row.state, district: row.district,
+      department: row.department, ward: row.ward,
+    });
+    if (!resolved.ok) {
+      audit({ actor: p, action: 'access:denied', targetType: 'complaint', targetId: row.id,
+              detail: { attemptedOfficerId: officerId, reason: resolved.reason }, ip: ipOf(req) });
+      const message =
+        resolved.reason === 'unknown_officer' ? 'That officer does not exist.'
+        : resolved.reason === 'inactive_officer' ? 'That officer is not currently available.'
+        : 'That officer cannot be assigned to this complaint.';
+      return res.status(resolved.reason === 'unknown_officer' ? 400 : 403)
+                .json({ error: 'invalid_assignee', message });
+    }
+
+    const officer = resolved.officer;
+    const now = new Date().toISOString();
+
+    // Supersede the previous holder rather than overwriting them: "who had
+    // this before" is the question a missed complaint always raises.
+    const history = [...(row.assignmentHistory ?? [])].map(a =>
+      a.isCurrent ? { ...a, isCurrent: false, unassignedAt: now } : a);
+
+    const assignment = {
+      officerId: officer.id,
+      officerName: officer.name,
+      employeeId: officer.employeeId,
+      department: officer.department,
+      district: officer.district,
+      ward: officer.ward,
+      assignedById: p.id,
+      assignedByName: p.displayName,
+      assignedByRole: p.role,
+      assignedAt: now,
+      reason,
+      isCurrent: true,
+    };
+    history.push(assignment);
+
     const updated = await store.update(row.id, {
-      assignedOfficerId: officerId,
-      assignedOfficerName: officerName || officerId,
+      assignedOfficerId: officer.id,
+      assignedOfficerName: officer.name,
+      assignment,
+      assignmentHistory: history,
+      // Status and assignment are separate concerns: only the initial
+      // hand-off advances the workflow, and a later reassignment must not
+      // rewind a complaint that is already under investigation.
       status: row.status === 'department_assigned' ? 'officer_assigned' : row.status,
     });
 
     audit({ actor: p, action: 'complaint:assign', targetType: 'complaint', targetId: row.id,
-            detail: { from: row.assignedOfficerId ?? null, to: officerId }, ip: ipOf(req) });
+            detail: { from: row.assignedOfficerId ?? null, to: officer.id, reason }, ip: ipOf(req) });
 
     res.json({ ok: true, complaint: project(updated!, p) });
   } catch (err) { return safeError(res, err); }
@@ -441,5 +505,42 @@ adminRouter.post('/sla/sweep', requirePermission('complaint:escalate'), async (r
     });
 
     res.json({ ok: true, escalated: breaches.length, breaches: scoped });
+  } catch (err) { return safeError(res, err); }
+});
+
+// ───────────────────────── officer directory ─────────────────────────
+/**
+ * GET /api/admin/officers — who this admin may hand work to.
+ *
+ * Scope-filtered in the data layer, not the UI. An endpoint that returned
+ * the whole roster and left the browser to narrow it would leak the
+ * staffing of every department and ward to anyone who opened devtools, and
+ * would drift from what POST /assign actually accepts. Both now run through
+ * the same rbac.inScope() call, so an officer that appears here is by
+ * construction one the assignment will take.
+ *
+ * Optional ?department=&district=&ward= narrow further — useful when the
+ * caller is a super admin filling a dropdown for one specific complaint.
+ */
+adminRouter.get('/officers', requirePermission('complaint:assign'), async (req, res) => {
+  try {
+    const p = principalOf(req);
+    const { department, district, ward } = req.query as Record<string, string | undefined>;
+
+    const eq = (a?: string, b?: string) => !b || a === b;
+    const officers = (await assignableOfficers(p))
+      .filter(o => eq(o.department, department) && eq(o.district, district) && eq(o.ward, ward))
+      .map(o => ({
+        id: o.id,
+        name: o.name,
+        // Employee ids are staffing detail; show them only to roles that
+        // already see citizen contact details.
+        employeeId: canSeeContactDetails(p) ? o.employeeId : undefined,
+        department: o.department,
+        district: o.district,
+        ward: o.ward,
+      }));
+
+    res.json({ ok: true, count: officers.length, officers });
   } catch (err) { return safeError(res, err); }
 });

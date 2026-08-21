@@ -28,6 +28,22 @@ export type Principal = {
   displayName: string;
 };
 
+export type AssignmentRecord = {
+  officerId: string;
+  officerName: string;
+  employeeId?: string;
+  department?: string;
+  district?: string;
+  ward?: string;
+  assignedById: string;
+  assignedByName: string;
+  assignedByRole: string;
+  assignedAt: string;
+  unassignedAt?: string;
+  reason?: string;
+  isCurrent: boolean;
+};
+
 export type Transition = { to: string; label: string; toLabel: string };
 
 export type AdminComplaint = {
@@ -43,6 +59,17 @@ export type AdminComplaint = {
   department?: string;
   assignedOfficerId?: string;
   assignedOfficerName?: string;
+
+  /**
+   * The current assignment record. Distinct from assignedOfficerName above,
+   * which says only WHO holds the complaint — this also says who handed it
+   * over and when, which is what makes an assignment auditable rather than
+   * merely asserted. Null until a complaint has been assigned to anyone.
+   */
+  assignment?: AssignmentRecord | null;
+  /** Every assignment this complaint has had, oldest first. */
+  assignmentHistory?: AssignmentRecord[];
+
   status: string;
   statusLabel: string;
   progress: number;

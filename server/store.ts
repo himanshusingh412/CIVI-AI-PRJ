@@ -38,6 +38,41 @@ export type Attachment = {
   uploadedAt: string;
 };
 
+/**
+ * One assignment of a complaint to an officer.
+ *
+ * Records BOTH sides of the handover. The receiving officer was already
+ * stored; the giving admin was not, so an assignment had no author — the
+ * audit log knew, but the audit log is in-memory and admin-only, which means
+ * the complaint itself could not answer "who sent this to me".
+ *
+ * Jurisdiction is snapshotted at assignment time rather than looked up
+ * later: an officer can be reposted to another ward, and the history has to
+ * keep saying where they were when they took this case, not where they are
+ * now.
+ */
+export type Assignment = {
+  officerId: string;
+  officerName: string;
+  employeeId?: string;
+  department?: string;
+  district?: string;
+  ward?: string;
+
+  /** Who performed the assignment. Never taken from the client. */
+  assignedById: string;
+  assignedByName: string;
+  assignedByRole: string;
+  assignedAt: string;
+
+  /** Set on the superseded entry when a reassignment happens. */
+  unassignedAt?: string;
+  /** Free text supplied by the assigner on a reassignment. */
+  reason?: string;
+  /** Exactly one entry in assignmentHistory has this true. */
+  isCurrent: boolean;
+};
+
 export type Complaint = {
   id: string;
   createdAt: string;
@@ -74,6 +109,30 @@ export type Complaint = {
   department?: string;
   assignedOfficerId?: string;
   assignedOfficerName?: string;
+
+  /**
+   * The current assignment, as a record rather than two loose fields.
+   *
+   * `assignedOfficerId`/`assignedOfficerName` above are kept because scope
+   * checks and existing screens read them, but they cannot answer the two
+   * questions an operator actually asks about a complaint that has gone
+   * quiet: WHO handed it over, and WHEN. Without an answer, "assigned to
+   * Amit Sharma" is unfalsifiable — there is no way to tell a deliberate
+   * routing decision from a mis-click three weeks ago.
+   *
+   * Status and assignment are deliberately separate fields: an officer stays
+   * assigned as the complaint moves through investigation and verification,
+   * and only an explicit reassignment changes who holds it.
+   */
+  assignment?: Assignment;
+
+  /**
+   * Every assignment this complaint has had, oldest first, including the
+   * current one. Append-only: a reassignment adds an entry rather than
+   * overwriting, because "who was holding this last Tuesday" is exactly the
+   * question that matters when something was missed.
+   */
+  assignmentHistory?: Assignment[];
 
   status: Status;
   priority: Priority;
