@@ -41,8 +41,8 @@ interface CitizenProfilePageProps {
 export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePageProps) {
   const { t } = useI18n();
   const { isDark, toggleTheme } = useTheme();
-  const { user, identity } = useAuth();
-  const { complaints } = useLiveComplaints({ mineOnly: true });
+  const { user, identity, identityLoading } = useAuth();
+  const { complaints, loading: complaintsLoading, error: complaintsError, refresh: refreshComplaints } = useLiveComplaints({ mineOnly: true });
   const [params, setParams] = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'documents'>(initialTab);
@@ -106,13 +106,44 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
   const minor = report?.findings.filter(f => f.severity === 'info') ?? [];
   const agreeing = report?.findings.filter(f => f.severity === 'ok') ?? [];
 
-  // Stats calculation
+  // Real, dynamic stats derived strictly from authenticated user's complaints
   const totalComplaints = complaints.length;
-  const pendingComplaints = complaints.filter(c => c.status !== 'closed' && c.status !== 'resolved').length;
+  const pendingComplaints = complaints.filter(c => c.status !== 'closed' && c.status !== 'resolved' && c.status !== 'rejected').length;
   const resolvedComplaints = complaints.filter(c => c.status === 'closed' || c.status === 'resolved').length;
 
-  const displayName = identity?.displayName || (user?.identifier ? user.identifier.split('@')[0] : 'Citizen User');
-  const userRoleLabel = identity?.role === 'citizen' ? 'Verified Citizen' : (identity?.role ? String(identity.role).replace(/_/g, ' ').toUpperCase() : 'Citizen');
+  // Real authenticated user information with localized fallbacks
+  const displayName = identity?.displayName || (user?.identifier ? user.identifier.split('@')[0] : t('profile.notProvided'));
+  const rawIdentifier = user?.identifier || identity?.identifier || '';
+  const isPhone = user?.channel === 'phone' || (!rawIdentifier.includes('@') && Boolean(rawIdentifier));
+  const isEmail = user?.channel === 'google' || rawIdentifier.includes('@');
+
+  const phoneValue = isPhone ? rawIdentifier : ((identity?.scope?.phone as string) || t('profile.notProvided'));
+  const emailValue = isEmail ? rawIdentifier : ((identity?.scope?.email as string) || t('profile.notProvided'));
+
+  // Auth method label
+  const authMethodLabel = user?.channel === 'phone'
+    ? t('profile.authPhone')
+    : user?.channel === 'google'
+      ? t('profile.authGoogle')
+      : t('profile.authSession');
+
+  // Verification status label
+  const isVerified = Boolean(user || identity);
+  const verificationBadgeText = isVerified ? t('profile.authenticatedAccount') : t('profile.unverified');
+
+  // Real jurisdiction & location from scope / profile, fallback to "Not provided"
+  const stateVal = (identity?.scope?.state as string) || (identity?.scope?.stateName as string) || t('profile.notProvided');
+  const districtVal = (identity?.scope?.district as string) || (identity?.scope?.districtName as string) || t('profile.notProvided');
+  const wardVal = (identity?.scope?.ward as string) || t('profile.notProvided');
+  const localBodyVal = (identity?.scope?.department as string) || (identity?.scope?.localBody as string) || t('profile.notProvided');
+
+  // Formatted location string for hero tag
+  const locationTagString = [districtVal, stateVal].filter(v => v !== t('profile.notProvided')).join(', ') || t('profile.notProvided');
+
+  // Citizen ID derived dynamically
+  const citizenIdCode = rawIdentifier
+    ? `#CIV-${rawIdentifier.replace(/\D/g, '').slice(-6) || '10482'}`
+    : '#CIV-10482';
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--color-bg-main)', color: 'var(--color-content)' }}>
@@ -126,9 +157,9 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
           <ArrowLeft size={17} aria-hidden="true" />
         </Link>
         <div className="min-w-0">
-          <h1 className="font-display font-bold text-[15px] leading-none truncate">My Citizen Profile</h1>
+          <h1 className="font-display font-bold text-[15px] leading-none truncate">{t('profile.title')}</h1>
           <p className="text-[10px] font-bold uppercase tracking-widest text-content-3 truncate">
-            Identity, Location & Verified Documents
+            {t('profile.subtitle')}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2 shrink-0">
@@ -148,7 +179,7 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
           {/* Citizen Hero Card */}
           <section className="rounded-3xl p-5 sm:p-6 bordered surface shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-5 relative overflow-hidden">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-cta via-saffron to-amber-500 text-white font-bold text-2xl sm:text-3xl grid place-items-center uppercase shadow-md shrink-0">
-              {displayName.charAt(0)}
+              {displayName !== t('profile.notProvided') ? displayName.charAt(0) : <User size={28} />}
             </div>
             
             <div className="min-w-0 flex-1 space-y-1">
@@ -158,22 +189,22 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
                 </h2>
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full"
                       style={{ background: 'var(--color-success-pale)', color: 'var(--color-success)' }}>
-                  <ShieldCheck size={13} /> {userRoleLabel}
+                  <ShieldCheck size={13} /> {verificationBadgeText}
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-content-2 pt-1 font-mono">
-                {user?.identifier && (
+                {rawIdentifier && (
                   <span className="flex items-center gap-1.5">
-                    {user.identifier.includes('@') ? <Mail size={13} className="text-cta" /> : <Phone size={13} className="text-saffron" />}
-                    {user.identifier}
+                    {rawIdentifier.includes('@') ? <Mail size={13} className="text-cta" /> : <Phone size={13} className="text-saffron" />}
+                    {rawIdentifier}
                   </span>
                 )}
                 <span className="flex items-center gap-1 text-content-3">
-                  <MapPin size={13} className="text-content-3" /> Delhi, New Delhi District
+                  <MapPin size={13} className="text-content-3" /> {locationTagString}
                 </span>
                 <span className="flex items-center gap-1 text-content-3">
-                  <Award size={13} className="text-amber-500" /> CivicAI Citizen ID #CIV-{user?.identifier?.slice(-6) || '872910'}
+                  <Award size={13} className="text-amber-500" /> {t('profile.citizenId')} {citizenIdCode}
                 </span>
               </div>
             </div>
@@ -181,7 +212,7 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
             {/* Quick Action button */}
             <div className="w-full sm:w-auto shrink-0 flex gap-2">
               <Button size="sm" variant="secondary" onClick={() => setActiveTab('documents')}>
-                <FileSearch size={14} /> My Documents
+                <FileSearch size={14} /> {t('profile.myDocuments')}
               </Button>
             </div>
           </section>
@@ -196,7 +227,7 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
                   : 'border-transparent text-content-3 hover:text-content'
               }`}
             >
-              <User size={15} /> Citizen Profile & Details
+              <User size={15} /> {t('profile.tabProfile')}
             </button>
             <button
               onClick={() => setActiveTab('documents')}
@@ -206,7 +237,7 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
                   : 'border-transparent text-content-3 hover:text-content'
               }`}
             >
-              <ShieldCheck size={15} /> Verified Documents & DigiLocker
+              <ShieldCheck size={15} /> {t('profile.tabDocuments')}
             </button>
           </div>
 
@@ -233,43 +264,75 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
             <div className="space-y-6">
               {/* Grievance Stats Cards */}
               <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-2xl bordered surface p-4 text-center">
-                  <span className="block text-2xl sm:text-3xl font-black font-display text-cta">{totalComplaints}</span>
-                  <span className="block text-[11px] font-bold text-content-3 uppercase tracking-wider mt-1">Total Complaints</span>
-                </div>
-                <div className="rounded-2xl bordered surface p-4 text-center">
-                  <span className="block text-2xl sm:text-3xl font-black font-display text-saffron">{pendingComplaints}</span>
-                  <span className="block text-[11px] font-bold text-content-3 uppercase tracking-wider mt-1">Awaiting Action</span>
-                </div>
-                <div className="rounded-2xl bordered surface p-4 text-center">
-                  <span className="block text-2xl sm:text-3xl font-black font-display style-success" style={{ color: 'var(--color-success)' }}>{resolvedComplaints}</span>
-                  <span className="block text-[11px] font-bold text-content-3 uppercase tracking-wider mt-1">Resolved Cases</span>
-                </div>
+                {complaintsLoading ? (
+                  <>
+                    <div className="rounded-2xl bordered surface p-4 text-center animate-pulse space-y-2">
+                      <div className="h-8 w-12 bg-content-3/20 rounded mx-auto"></div>
+                      <div className="h-3 w-20 bg-content-3/20 rounded mx-auto"></div>
+                    </div>
+                    <div className="rounded-2xl bordered surface p-4 text-center animate-pulse space-y-2">
+                      <div className="h-8 w-12 bg-content-3/20 rounded mx-auto"></div>
+                      <div className="h-3 w-20 bg-content-3/20 rounded mx-auto"></div>
+                    </div>
+                    <div className="rounded-2xl bordered surface p-4 text-center animate-pulse space-y-2">
+                      <div className="h-8 w-12 bg-content-3/20 rounded mx-auto"></div>
+                      <div className="h-3 w-20 bg-content-3/20 rounded mx-auto"></div>
+                    </div>
+                  </>
+                ) : complaintsError ? (
+                  <div className="col-span-3 rounded-2xl bordered surface p-4 text-center text-xs text-danger space-y-2">
+                    <p>{t('profile.loadError')}</p>
+                    <Button size="xs" variant="secondary" onClick={() => void refreshComplaints()}>
+                      {t('profile.retry')}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-2xl bordered surface p-4 text-center">
+                      <span className="block text-2xl sm:text-3xl font-black font-display text-cta">{totalComplaints}</span>
+                      <span className="block text-[11px] font-bold text-content-3 uppercase tracking-wider mt-1">{t('profile.totalComplaints')}</span>
+                    </div>
+                    <div className="rounded-2xl bordered surface p-4 text-center">
+                      <span className="block text-2xl sm:text-3xl font-black font-display text-saffron">{pendingComplaints}</span>
+                      <span className="block text-[11px] font-bold text-content-3 uppercase tracking-wider mt-1">{t('profile.awaitingAction')}</span>
+                    </div>
+                    <div className="rounded-2xl bordered surface p-4 text-center">
+                      <span className="block text-2xl sm:text-3xl font-black font-display style-success" style={{ color: 'var(--color-success)' }}>{resolvedComplaints}</span>
+                      <span className="block text-[11px] font-bold text-content-3 uppercase tracking-wider mt-1">{t('profile.resolvedCases')}</span>
+                    </div>
+                  </>
+                )}
               </div>
+
+              {!complaintsLoading && !complaintsError && totalComplaints === 0 && (
+                <div className="rounded-xl p-3 text-center text-xs text-content-3 bordered surface">
+                  {t('profile.noComplaintsYet')}
+                </div>
+              )}
 
               {/* Citizen Personal & Jurisdiction Details Grid */}
               <div className="grid sm:grid-cols-2 gap-4">
                 {/* Personal Information */}
                 <div className="rounded-2xl bordered surface p-5 space-y-4">
                   <h3 className="font-display font-bold text-[15px] text-content flex items-center gap-2">
-                    <User size={16} className="text-cta" /> Personal Details
+                    <User size={16} className="text-cta" /> {t('profile.personalDetails')}
                   </h3>
                   <dl className="space-y-3 text-xs">
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">Full Name</dt>
+                      <dt className="text-content-3">{t('profile.fullName')}</dt>
                       <dd className="font-bold text-content">{displayName}</dd>
                     </div>
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">Mobile / Phone</dt>
-                      <dd className="font-mono font-bold text-content">{user?.channel === 'phone' ? user.identifier : '+91 93057 27103'}</dd>
+                      <dt className="text-content-3">{t('profile.phone')}</dt>
+                      <dd className="font-mono font-bold text-content">{phoneValue}</dd>
                     </div>
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">Email Address</dt>
-                      <dd className="font-mono font-bold text-content">{user?.channel === 'google' ? user.identifier : 'himanshux412@gmail.com'}</dd>
+                      <dt className="text-content-3">{t('profile.email')}</dt>
+                      <dd className="font-mono font-bold text-content">{emailValue}</dd>
                     </div>
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">Authentication Method</dt>
-                      <dd className="font-bold uppercase tracking-wider text-cta text-[10px]">{user?.channel || 'Google OAuth 2.0'}</dd>
+                      <dt className="text-content-3">{t('profile.authMethod')}</dt>
+                      <dd className="font-bold uppercase tracking-wider text-cta text-[10px]">{authMethodLabel}</dd>
                     </div>
                   </dl>
                 </div>
@@ -277,37 +340,39 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
                 {/* Jurisdiction & Address Details */}
                 <div className="rounded-2xl bordered surface p-5 space-y-4">
                   <h3 className="font-display font-bold text-[15px] text-content flex items-center gap-2">
-                    <MapPin size={16} className="text-saffron" /> Jurisdiction & Location
+                    <MapPin size={16} className="text-saffron" /> {t('profile.jurisdictionLocation')}
                   </h3>
                   <dl className="space-y-3 text-xs">
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">State / UT</dt>
-                      <dd className="font-bold text-content">Delhi</dd>
+                      <dt className="text-content-3">{t('profile.state')}</dt>
+                      <dd className="font-bold text-content">{stateVal}</dd>
                     </div>
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">District / Municipal Zone</dt>
-                      <dd className="font-bold text-content">New Delhi District</dd>
+                      <dt className="text-content-3">{t('profile.district')}</dt>
+                      <dd className="font-bold text-content">{districtVal}</dd>
                     </div>
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">Municipal Ward</dt>
-                      <dd className="font-bold text-content">Ward 14 (Connaught Place & Central)</dd>
+                      <dt className="text-content-3">{t('profile.ward')}</dt>
+                      <dd className="font-bold text-content">{wardVal}</dd>
                     </div>
                     <div className="flex justify-between py-1.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      <dt className="text-content-3">Local Governance Body</dt>
-                      <dd className="font-bold text-content">New Delhi Municipal Council (NDMC)</dd>
+                      <dt className="text-content-3">{t('profile.localBody')}</dt>
+                      <dd className="font-bold text-content">{localBodyVal}</dd>
                     </div>
                   </dl>
                 </div>
               </div>
 
-              {/* Verified Government Identity Status Card */}
+              {/* Verified Identity Status Card */}
               <div className="rounded-2xl p-5 border flex items-start gap-4"
                    style={{ background: 'var(--color-surface-2)', borderColor: 'var(--color-border)' }}>
                 <Shield className="w-6 h-6 shrink-0 mt-0.5" style={{ color: 'var(--color-success)' }} />
                 <div className="text-xs space-y-1">
-                  <h4 className="font-bold text-content text-[13.5px]">Government Identity Status: VERIFIED</h4>
+                  <h4 className="font-bold text-content text-[13.5px]">
+                    {t('profile.identityStatus')}: {verificationBadgeText}
+                  </h4>
                   <p className="text-content-2 leading-relaxed">
-                    Your citizen profile is authenticated with Indian Municipal Council standards. You can file civic grievances, track official department SLAs, and verify identity documents against scheme requirements.
+                    {t('profile.authNotice')}
                   </p>
                 </div>
               </div>
