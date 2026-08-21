@@ -43,7 +43,7 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
   const { t } = useI18n();
   const { isDark, toggleTheme } = useTheme();
   const { user, identity, identityLoading, refreshIdentity } = useAuth();
-  const { complaints, loading: complaintsLoading, error: complaintsError, refresh: refreshComplaints } = useLiveComplaints({ mineOnly: true });
+  const { complaints, loading: complaintsLoading, error: complaintsError, refresh: refreshComplaints } = useLiveComplaints();
   const [params, setParams] = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'documents'>(initialTab);
@@ -125,8 +125,8 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
 
   // Real, dynamic stats derived strictly from authenticated user's complaints
   const totalComplaints = complaints.length;
-  const pendingComplaints = complaints.filter(c => c.status !== 'closed' && c.status !== 'resolved' && c.status !== 'rejected').length;
-  const resolvedComplaints = complaints.filter(c => c.status === 'closed' || c.status === 'resolved').length;
+  const pendingComplaints = complaints.filter(c => c.status === 'Pending' || c.status === 'In Progress' || c.status === 'Emergency').length;
+  const resolvedComplaints = complaints.filter(c => c.status === 'Resolved').length;
 
   // Real authenticated user information with localized fallbacks
   const displayName = identity?.displayName || (user?.identifier ? user.identifier.split('@')[0] : t('profile.notProvided'));
@@ -394,7 +394,7 @@ export function CitizenProfilePage({ initialTab = 'profile' }: CitizenProfilePag
                 ) : complaintsError ? (
                   <div className="col-span-3 rounded-2xl bordered surface p-4 text-center text-xs text-danger space-y-2">
                     <p>{t('profile.loadError')}</p>
-                    <Button size="xs" variant="secondary" onClick={() => void refreshComplaints()}>
+                    <Button size="sm" variant="secondary" onClick={() => void refreshComplaints()}>
                       {t('profile.retry')}
                     </Button>
                   </div>
