@@ -224,6 +224,9 @@ app.post('/api/auth/request-otp', otpRequestLimiter, async (req, res) => {
       if (result.retryAfterSec) res.setHeader('Retry-After', String(result.retryAfterSec));
       return res.status(result.status).json(result);
     }
+    if (result.ok === true && (result as any).statelessToken) {
+      res.setHeader('Set-Cookie', `civicai_otp_state=${encodeURIComponent((result as any).statelessToken)}; Path=/; Max-Age=300; SameSite=Lax; HttpOnly; Secure`);
+    }
     return res.json(result);
   } catch (err) {
     return safeError(res, err);
@@ -232,10 +235,14 @@ app.post('/api/auth/request-otp', otpRequestLimiter, async (req, res) => {
 
 app.post('/api/auth/verify-otp', otpVerifyLimiter, async (req, res) => {
   try {
+    const cookies = readCookies(req);
+    const statelessToken = cookies['civicai_otp_state'] || req.body?.statelessToken;
+
     const result = await constantTime(AUTH_TIME_FLOOR_MS, () =>
       verifyOtp(
         String(req.body?.identifier || '').slice(0, 254),
         String(req.body?.otp || '').slice(0, 10),
+        statelessToken,
       ),
     );
 
