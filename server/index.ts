@@ -62,6 +62,14 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(securityHeaders);
+
+// Normalize path for Vercel serverless rewrites so /auth/... becomes /api/auth/...
+app.use((req, _res, next) => {
+  if (req.url && !req.url.startsWith('/api') && req.url.startsWith('/')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
 /**
  * The raw body is stashed alongside the parsed one.
  *
