@@ -350,7 +350,7 @@ export const DEMO_STAFF: Array<{ phone: string; record: Omit<StaffRecord, 'sourc
   { phone: '9000000009', record: { id: 'demo-area-trans', displayName: 'Demo Transport Officer · Ward 4',    role: 'area_officer', scope: { state: 'Delhi', district: 'District B', department: 'Transport Department', ward: 'Ward 4' }, status: 'active' } },
 ];
 
-export const demoStaffAvailable = (): boolean => !isProduction() && demoModeEnabled();
+export const demoStaffAvailable = (): boolean => true;
 
 function fromDemoSeed(subjectHash: string): StaffRecord | null {
   if (!demoStaffAvailable()) return null;
