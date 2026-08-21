@@ -398,6 +398,9 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
         history: req.body?.history,
         coords: req.body?.coords ?? null,
         sessionKey: key,
+        // The citizen's chosen UI language. Validated against a known list
+        // inside handleChat, never interpolated raw into the prompt.
+        language: req.body?.language,
       }),
     );
     res.json(result);

@@ -10,7 +10,7 @@ import { LanguagePicker } from '../components/LanguagePicker';
 import { IntegrationBadge } from '../components/IntegrationBadge';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { useI18n } from '../i18n/I18nContext';
+import { useI18n, useT } from '../i18n/I18nContext';
 import { useVoice } from '../hooks/useVoice';
 import { sendChat, getBrowserLocation, type ChatTurn } from '../services/chatService';
 import { createComplaint } from '../services/complaintService';
@@ -185,7 +185,7 @@ export function AssistantPage() {
       .slice(-MAX_HISTORY)
       .map(m => ({ role: m.role, content: m.content }));
 
-    const res = await sendChat(text, history.slice(0, -1), coords);
+    const res = await sendChat(text, history.slice(0, -1), coords, lang);
 
     const meta: Understanding = {
       category: res.category,
@@ -258,7 +258,7 @@ export function AssistantPage() {
         <Link
           to="/portal"
           className="press w-9 h-9 rounded-xl grid place-items-center text-content-3 hover:text-cta transition-colors"
-          aria-label="Back to CivicAI"
+          aria-label={t('assistant.backToCivicai')}
         >
           <ArrowLeft size={17} aria-hidden="true" />
         </Link>
@@ -266,7 +266,7 @@ export function AssistantPage() {
         <button
           onClick={() => setLeftOpen(o => !o)}
           className="press lg:hidden w-9 h-9 rounded-xl grid place-items-center text-content-3 hover:text-cta transition-colors"
-          aria-label="Conversation history"
+          aria-label={t('assistant.conversationHistory')}
           aria-expanded={leftOpen}
         >
           <PanelLeft size={17} aria-hidden="true" />
@@ -318,7 +318,7 @@ export function AssistantPage() {
           <button
             onClick={() => setRightOpen(o => !o)}
             className="press xl:hidden w-9 h-9 rounded-xl grid place-items-center text-content-3 hover:text-cta transition-colors"
-            aria-label="What the assistant understood"
+            aria-label={t('assistant.whatTheAssistantUnderstood')}
             aria-expanded={rightOpen}
           >
             <PanelRight size={17} aria-hidden="true" />
@@ -346,7 +346,7 @@ export function AssistantPage() {
             </Button>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-2 pb-3" aria-label="Conversation history">
+          <nav className="flex-1 overflow-y-auto px-2 pb-3" aria-label={t('assistant.conversationHistory')}>
             {conversations.length === 0 ? (
               <p className="text-[12px] text-content-3 px-2 py-3 leading-relaxed">
                 Your past conversations appear here. They stay on this device
@@ -443,7 +443,7 @@ export function AssistantPage() {
                                 onClick={() => voice.speak(m.content)}
                                 className="text-[10px] font-bold uppercase tracking-wide text-content-3 hover:text-cta
                                            inline-flex items-center gap-1 transition-colors"
-                                aria-label="Read this answer aloud"
+                                aria-label={t('assistant.readThisAnswerAloud')}
                               >
                                 <Volume2 size={11} aria-hidden="true" /> Listen
                               </button>
@@ -463,7 +463,7 @@ export function AssistantPage() {
                     style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
                   >
                     <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-cta)' }} aria-hidden="true" />
-                    <span className="text-[13px] text-content-3">Thinking…</span>
+                    <span className="text-[13px] text-content-3">{t('assistant.thinking')}</span>
                   </div>
                 </div>
               )}
@@ -488,7 +488,7 @@ export function AssistantPage() {
                     fullWidth
                     size="sm"
                     loading={filing}
-                    loadingText="Filing…"
+                    loadingText={t('assistant.filing')}
                     onClick={fileComplaint}
                   >
                     File this complaint
@@ -540,7 +540,7 @@ export function AssistantPage() {
                 >
                   <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
                   <span className="flex-1 leading-relaxed">{voice.error}</span>
-                  <button onClick={voice.clearError} aria-label="Dismiss" className="shrink-0">
+                  <button onClick={voice.clearError} aria-label={t('assistant.dismiss')} className="shrink-0">
                     <X size={13} aria-hidden="true" />
                   </button>
                 </div>
@@ -575,7 +575,7 @@ export function AssistantPage() {
               )}
 
               <div className="flex items-end gap-2">
-                <label htmlFor="assistant-input" className="sr-only">Message the assistant</label>
+                <label htmlFor="assistant-input" className="sr-only">{t('assistant.messageTheAssistant')}</label>
                 <textarea
                   id="assistant-input"
                   ref={inputRef}
@@ -596,7 +596,7 @@ export function AssistantPage() {
                     placeholder wrapped to two lines inside a 46px-tall box
                     and was visibly cut in half on a phone.
                   */
-                  placeholder="Describe your issue…"
+                  placeholder={t('assistant.describeYourIssue')}
                   className="flex-1 resize-none rounded-xl px-3.5 py-3 text-[14px] bordered
                              surface-2 text-content placeholder:text-[var(--color-content-3)]
                              focus:outline-none focus:border-[var(--color-cta)] max-h-40
@@ -628,7 +628,7 @@ export function AssistantPage() {
                 <button
                   onClick={() => void send(input)}
                   disabled={!input.trim() || thinking}
-                  aria-label="Send message"
+                  aria-label={t('assistant.sendMessage')}
                   className="press w-[46px] h-[46px] shrink-0 rounded-xl grid place-items-center
                              text-white transition-colors disabled:opacity-40"
                   style={{ background: 'var(--color-cta)' }}
@@ -720,7 +720,7 @@ export function AssistantPage() {
                       fullWidth
                       size="sm"
                       loading={filing}
-                      loadingText="Filing…"
+                      loadingText={t('assistant.filing')}
                       onClick={fileComplaint}
                     >
                       File this complaint
@@ -769,7 +769,7 @@ export function AssistantPage() {
             >
               <FileSearch size={16} style={{ color: 'var(--color-saffron)' }} aria-hidden="true" />
               <span className="min-w-0">
-                <span className="block text-[12.5px] font-bold text-content">Check my documents</span>
+                <span className="block text-[12.5px] font-bold text-content">{t('assistant.checkMyDocuments')}</span>
                 <span className="block text-[11px] text-content-3 leading-snug">
                   Find mismatches before you apply
                 </span>
@@ -799,6 +799,7 @@ function SidePanel({
   className?: string;
   children: React.ReactNode;
 }) {
+  const t = useT();
   // Escape closes the drawer. Only bound while it is open as an overlay.
   useEffect(() => {
     if (!open) return;
@@ -826,7 +827,7 @@ function SidePanel({
         <button
           onClick={onClose}
           className="lg:hidden absolute top-3 right-3 w-8 h-8 rounded-lg grid place-items-center text-content-3"
-          aria-label="Close panel"
+          aria-label={t('assistant.closePanel')}
         >
           <X size={16} aria-hidden="true" />
         </button>

@@ -16,10 +16,13 @@ import {
   fetchMe, fetchComplaints, fetchAnalytics, fetchAudit,
   isAuthError, type AdminComplaint, type Analytics, type AuditEntry, type MeResponse,
 } from '../../services/adminService';
+import { useT } from '../../i18n/I18nContext';
+import { statusLabel } from '../../i18n/labels';
 
 type Tab = 'overview' | 'complaints' | 'audit';
 
 export function AdminPortal() {
+  const t = useT();
   const chart = useThemeTokens();
   const [tab, setTab] = useState<Tab>('overview');
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -72,7 +75,7 @@ export function AdminPortal() {
       <div className="flex-1 grid place-items-center p-8">
         <div className="surface bordered rounded-2xl p-8 max-w-md text-center elev-2">
           <ShieldAlert size={40} className="mx-auto mb-4" style={{ color: 'var(--color-danger)' }} aria-hidden="true" />
-          <h2 className="font-display font-bold text-lg text-content">Admin access required</h2>
+          <h2 className="font-display font-bold text-lg text-content">{t('adminPortal.adminAccessRequired')}</h2>
           <p className="text-sm text-content-3 mt-2">{error}</p>
           <p className="text-[12px] text-content-3 mt-4 leading-relaxed">
             Roles are granted to accounts, not chosen in the browser. Sign in
@@ -100,7 +103,7 @@ export function AdminPortal() {
 
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display font-bold text-2xl text-content">Admin Portal</h1>
+          <h1 className="font-display font-bold text-2xl text-content">{t('adminPortal.adminPortal')}</h1>
           <p className="text-sm text-content-3 mt-0.5">
             {me ? (
               <>
@@ -175,7 +178,7 @@ export function AdminPortal() {
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <ChartCard title="By department">
+                <ChartCard title={t('adminPortal.byDepartment')}>
                   {loading ? <Skeleton className="h-[260px] w-full" /> : (
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={deptData} layout="vertical" margin={{ left: 12, right: 16 }}>
@@ -192,7 +195,7 @@ export function AdminPortal() {
                   )}
                 </ChartCard>
 
-                <ChartCard title="By priority">
+                <ChartCard title={t('adminPortal.byPriority')}>
                   {loading ? <Skeleton className="h-[260px] w-full" /> : (
                     <ResponsiveContainer width="100%" height={260}>
                       <PieChart>
@@ -207,7 +210,7 @@ export function AdminPortal() {
                   )}
                 </ChartCard>
 
-                <ChartCard title="By district" className="lg:col-span-2">
+                <ChartCard title={t('adminPortal.byDistrict')} className="lg:col-span-2">
                   {loading ? <Skeleton className="h-[240px] w-full" /> : (
                     <ResponsiveContainer width="100%" height={240}>
                       <LineChart data={districtData}>
@@ -230,12 +233,12 @@ export function AdminPortal() {
               <div className="flex flex-wrap gap-2 items-center">
                 <div className="relative flex-1 min-w-[220px]">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-3" aria-hidden="true" />
-                  <label htmlFor="admin-search" className="sr-only-focusable">Search complaints</label>
+                  <label htmlFor="admin-search" className="sr-only-focusable">{t('adminPortal.searchComplaints')}</label>
                   <input
                     id="admin-search"
                     value={q}
                     onChange={e => setQ(e.target.value)}
-                    placeholder="Search ID, description, category…"
+                    placeholder={t('adminPortal.searchIdDescriptionCategory')}
                     className="field w-full h-10 pl-9 pr-3 rounded-xl text-sm outline-none border-2"
                     style={{ background: 'var(--color-surface)', color: 'var(--color-content)', borderColor: 'var(--color-border-strong)' }}
                   />
@@ -249,7 +252,7 @@ export function AdminPortal() {
               <div className="surface bordered rounded-2xl overflow-hidden elev-2">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
-                    <caption className="sr-only-focusable">Complaints visible to your role</caption>
+                    <caption className="sr-only-focusable">{t('adminPortal.complaintsVisibleToYourRole')}</caption>
                     <thead>
                       <tr className="surface-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
                         {['ID', 'Category', 'District', 'Department', 'Priority', 'Status', 'SLA'].map(h => (
@@ -271,7 +274,7 @@ export function AdminPortal() {
                       ) : complaints.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="px-4 py-14 text-center">
-                            <p className="font-semibold text-content">No complaints in your scope</p>
+                            <p className="font-semibold text-content">{t('adminPortal.noComplaintsInYourScope')}</p>
                             <p className="text-[13px] text-content-3 mt-1">
                               Your role only sees records inside its jurisdiction. Clearing the filters may reveal more.
                             </p>
@@ -298,7 +301,7 @@ export function AdminPortal() {
                                 {c.priority}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-[12px] font-semibold text-content-2">{c.statusLabel}</td>
+                            <td className="px-4 py-3 text-[12px] font-semibold text-content-2">{statusLabel(t, c.status)}</td>
                             <td className="px-4 py-3 text-[12px] font-semibold"
                                 style={{ color: overdue ? 'var(--color-danger)' : 'var(--color-content-3)' }}>
                               {overdue ? 'Breached' : new Date(c.slaDeadline).toLocaleDateString()}
@@ -335,7 +338,7 @@ export function AdminPortal() {
                   </div>
                   <ul className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
                     {audit.entries.length === 0 && (
-                      <li className="p-8 text-center text-sm text-content-3">No activity recorded yet.</li>
+                      <li className="p-8 text-center text-sm text-content-3">{t('adminPortal.noActivityRecordedYet')}</li>
                     )}
                     {audit.entries.map(e => (
                       <li key={e.id} className="px-4 py-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">

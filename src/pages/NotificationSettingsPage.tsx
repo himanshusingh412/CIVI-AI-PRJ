@@ -66,7 +66,7 @@ export function NotificationSettingsPage() {
       setPrefs(body.preferences);
       setItems(body.notifications ?? []);
     } catch {
-      setError('Could not load your notification settings.');
+      setError(t('notificationSettings.couldNotLoadYourNotification'));
     }
   }, []);
 
@@ -88,7 +88,7 @@ export function NotificationSettingsPage() {
       if (!res.ok) throw new Error('save failed');
       setPrefs((await res.json()).preferences);
     } catch {
-      setError('That change could not be saved. Please try again.');
+      setError(t('notificationSettings.thatChangeCouldNotBe'));
       void load();
     } finally {
       setSaving(null);
@@ -134,10 +134,10 @@ export function NotificationSettingsPage() {
       <header className="h-14 shrink-0 glass border-b flex items-center gap-2 px-3 sm:px-5"
               style={{ borderColor: 'var(--color-border)' }}>
         <Link to="/portal" className="press w-9 h-9 rounded-xl grid place-items-center text-content-3 hover:text-cta transition-colors"
-              aria-label="Back to CivicAI">
+              aria-label={t('notificationSettings.backToCivicai')}>
           <ArrowLeft size={17} aria-hidden="true" />
         </Link>
-        <h1 className="font-display font-bold text-[15px]">Notifications</h1>
+        <h1 className="font-display font-bold text-[15px]">{t('notificationSettings.notifications')}</h1>
       </header>
 
       <main id="settings-main" tabIndex={-1} className="flex-1 focus:outline-none">
@@ -151,7 +151,7 @@ export function NotificationSettingsPage() {
           )}
 
           <section>
-            <h2 className="font-display font-bold text-xl tracking-tight">How we reach you</h2>
+            <h2 className="font-display font-bold text-xl tracking-tight">{t('notificationSettings.howWeReachYou')}</h2>
             <p className="text-[13.5px] text-content-3 mt-1.5 leading-relaxed">
               Everything below is off until you switch it on. You will always be able to see
               updates in CivicAI itself, whatever you choose here.
@@ -162,7 +162,7 @@ export function NotificationSettingsPage() {
               <div className="p-4 flex items-start gap-3">
                 <Bell size={17} className="mt-0.5 shrink-0" style={{ color: 'var(--color-cta)' }} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-bold text-content">In the app</p>
+                  <p className="text-[14px] font-bold text-content">{t('notificationSettings.inTheApp')}</p>
                   <p className="text-[12.5px] text-content-3 mt-0.5 leading-relaxed">
                     Always on. This is the record of your complaint, not a message we push at you.
                   </p>
@@ -201,7 +201,7 @@ export function NotificationSettingsPage() {
               <div className="p-4 flex items-start gap-3">
                 <BellOff size={17} className="mt-0.5 shrink-0" style={{ color: 'var(--color-content-3)' }} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-bold text-content">Pause everything</p>
+                  <p className="text-[14px] font-bold text-content">{t('notificationSettings.pauseEverything')}</p>
                   <p className="text-[12.5px] text-content-3 mt-0.5 leading-relaxed">
                     Stops every message without forgetting your choices above. Your complaints
                     carry on being worked either way.
@@ -223,7 +223,7 @@ export function NotificationSettingsPage() {
                 Recent updates{unread > 0 && <span className="text-[13px] font-semibold text-content-3"> · {unread} unread</span>}
               </h2>
               {unread > 0 && (
-                <Button size="sm" variant="ghost" onClick={markAllRead}>Mark all read</Button>
+                <Button size="sm" variant="ghost" onClick={markAllRead}>{t('notificationSettings.markAllRead')}</Button>
               )}
             </div>
 
@@ -238,7 +238,7 @@ export function NotificationSettingsPage() {
                       style={n.read ? undefined : { borderColor: 'var(--color-cta)' }}>
                     <div className="flex items-start gap-2">
                       {!n.read && (
-                        <span aria-label="Unread" className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                        <span aria-label={t('notificationSettings.unread')} className="w-2 h-2 rounded-full mt-1.5 shrink-0"
                               style={{ background: 'var(--color-cta)' }} />
                       )}
                       <div className="min-w-0">

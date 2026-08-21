@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, FlaskConical, MinusCircle, HelpCircle } from 'lucide-react';
 import { useConfig, type IntegrationMode } from '../context/ConfigContext';
+import { useT } from '../i18n/I18nContext';
 
 /**
  * The only component permitted to render an integration's status.
@@ -87,6 +88,7 @@ export function IntegrationBadge({
  * needs to know at a glance that some providers are simulated.
  */
 export function DemoModeBanner() {
+  const t = useT();
   const { config, loading } = useConfig();
   if (loading || !config.demoMode) return null;
 
@@ -100,7 +102,7 @@ export function DemoModeBanner() {
       style={{ background: 'var(--color-info-pale)', color: 'var(--color-info)' }}
     >
       <FlaskConical size={13} aria-hidden="true" className="shrink-0" />
-      <span className="font-bold uppercase tracking-widest">Demo mode</span>
+      <span className="font-bold uppercase tracking-widest">{t('integrationBadge.demoMode')}</span>
       <span className="opacity-90">
         Simulated providers: {simulated.map(i => i.label).join(', ')}. Complaint
         data, roles and workflow are real.

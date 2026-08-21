@@ -44,7 +44,7 @@ export function MobileNav({
   const t = useT();
   return (
     <nav
-      aria-label="Primary"
+      aria-label={t('mobileNav.primary')}
       className="lg:hidden fixed bottom-0 inset-x-0 glass border-t"
       style={{
         borderColor: 'var(--color-border)',

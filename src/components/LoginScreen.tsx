@@ -292,7 +292,7 @@ const GoogleIcon = () => (
   const handleVerifyOtp = async () => {
     setError(null);
     if (!/^\d{6}$/.test(otp)) {
-      setError('Enter the 6-digit code.');
+      setError(t('login.enterThe6digitCode'));
       return;
     }
 
@@ -351,8 +351,8 @@ const GoogleIcon = () => (
             >
               <ShieldCheck size={28} strokeWidth={2} />
             </div>
-            <h1 className="font-display font-bold text-2xl tracking-tight text-content">Welcome to CivicAI</h1>
-            <p className="text-sm mt-1.5 text-content-3">How would you like to continue?</p>
+            <h1 className="font-display font-bold text-2xl tracking-tight text-content">{t('login.welcomeToCivicai')}</h1>
+            <p className="text-sm mt-1.5 text-content-3">{t('login.howWouldYouLikeTo')}</p>
           </header>
 
           <div className="flex flex-col gap-3">
@@ -512,7 +512,7 @@ const GoogleIcon = () => (
           <>
             {/* Primary: Google */}
             {configLoading ? (
-              <div className="h-11 rounded-full skeleton mb-1" role="status" aria-label="Loading sign-in options" />
+              <div className="h-11 rounded-full skeleton mb-1" role="status" aria-label={t('login.loadingSigninOptions')} />
             ) : googleClientId ? (
               <div className="mb-1">
                 <div ref={googleBtnRef} className="flex justify-center min-h-[44px]" aria-busy={googleBusy || undefined} />
@@ -533,7 +533,7 @@ const GoogleIcon = () => (
                   </button>
                 )}
                 {googleBusy && (
-                  <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in…</p>
+                  <p className="text-xs text-center mt-2 text-content-3" role="status">{t('login.signingYouIn')}</p>
                 )}
               </div>
             ) : isFirebaseConfigured() ? (
@@ -553,7 +553,7 @@ const GoogleIcon = () => (
                   <span>{t('auth.googleCta')}</span>
                 </button>
                 {googleBusy && (
-                  <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in with Firebase…</p>
+                  <p className="text-xs text-center mt-2 text-content-3" role="status">{t('login.signingYouInWithFirebase')}</p>
                 )}
               </div>
             ) : (
@@ -573,7 +573,7 @@ const GoogleIcon = () => (
                   <span>{t('auth.googleCta')}</span>
                 </button>
                 {googleBusy && (
-                  <p className="text-xs text-center mt-2 text-content-3" role="status">Signing you in…</p>
+                  <p className="text-xs text-center mt-2 text-content-3" role="status">{t('login.signingYouIn')}</p>
                 )}
               </div>
             )}
@@ -676,7 +676,7 @@ const GoogleIcon = () => (
                   fullWidth
                   size="lg"
                   disabled={lockedFor > 0 || !phoneValid}
-                  loadingText="Sending code…"
+                  loadingText={t('login.sendingCode')}
                   onClick={() => handleRequestOtp()}
                 >
                   {lockedFor > 0 ? 'Temporarily locked' : 'Text me a code'}
@@ -791,7 +791,7 @@ const GoogleIcon = () => (
               fullWidth
               size="lg"
               disabled={otp.length !== 6}
-              loadingText="Verifying…"
+              loadingText={t('login.verifying')}
               onClick={() => handleVerifyOtp()}
             >
               Verify and continue
@@ -803,7 +803,7 @@ const GoogleIcon = () => (
                 variant="ghost"
                 size="sm"
                 disabled={resendIn > 0}
-                loadingText="Resending…"
+                loadingText={t('login.resending')}
                 onClick={() => handleRequestOtp()}
               >
                 {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}

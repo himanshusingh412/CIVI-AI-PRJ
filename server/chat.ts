@@ -59,7 +59,35 @@ Rules:
 - Set "readyToFile" true only when you have BOTH a clear problem description AND a location.
 - "missingInfo" lists what you still need, e.g. ["location"] or ["description"].
 - For life-threatening situations set intent "emergency" and priority "Critical".
-- Reply in the same language the citizen used (English or Hindi).`;
+- Reply in the language named below. This is the language the citizen
+  selected in the app, not a guess from their message text.`;
+
+/**
+ * Languages this assistant can be instructed to answer in.
+ *
+ * Named explicitly rather than passing the raw code through: a model told to
+ * "reply in hi" is being asked to decode an ISO tag, while one told to "reply
+ * in Hindi (हिन्दी)" is being told in the target language itself, which is a
+ * far stronger instruction. Anything unrecognised falls back to English
+ * rather than interpolating an unvalidated string into the system prompt.
+ */
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English', hi: 'Hindi (हिन्दी)', bn: 'Bengali (বাংলা)', mr: 'Marathi (मराठी)',
+  te: 'Telugu (తెలుగు)', ta: 'Tamil (தமிழ்)', gu: 'Gujarati (ગુજરાતી)',
+  kn: 'Kannada (ಕನ್ನಡ)', ml: 'Malayalam (മലയാളം)', pa: 'Punjabi (ਪੰਜਾਬੀ)',
+  or: 'Odia (ଓଡ଼ିଆ)', ur: 'Urdu (اردو)',
+};
+
+const systemFor = (language: unknown): string => {
+  const code = String(language ?? 'en').slice(0, 5);
+  const name = LANGUAGE_NAMES[code] ?? 'English';
+  return `${SYSTEM}
+
+REPLY LANGUAGE: ${name}.
+Write the "reply" field in ${name}. Keep every OTHER field
+(category, intent, priority, sentiment) in the exact English enum values
+listed above — those are machine-read identifiers, not text for the citizen.`;
+};
 
 const SCHEMA = {
   type: Type.OBJECT,
@@ -119,6 +147,7 @@ export async function handleChat(input: {
   history: unknown;
   coords?: { lat: number; lng: number } | null;
   sessionKey: string;
+  language?: unknown;
 }): Promise<ChatResponse> {
   const message = clampText(input.message);
   const history: ChatTurn[] = clampHistory(input.history);
@@ -135,7 +164,7 @@ export async function handleChat(input: {
   };
 
   const result = await generateJson<ChatReply>({
-    system: SYSTEM,
+    system: systemFor(input.language),
     prompt: message,
     history,
     schema: SCHEMA,

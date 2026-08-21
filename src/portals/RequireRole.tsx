@@ -3,6 +3,7 @@ import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, type IdentityRole } from '../services/identityService';
+import { useT } from '../i18n/I18nContext';
 
 /**
  * Route gate for a set of roles.
@@ -34,6 +35,7 @@ export function RequireRole({
   children: React.ReactNode;
   signInPath?: string;
 }) {
+  const t = useT();
   const { status, identity, identityLoading } = useAuth();
 
   if (status === 'loading') return <LoadingScreen label="Restoring your session…" />;
@@ -52,7 +54,7 @@ export function RequireRole({
           className="w-full px-4 sm:px-8 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[12px] font-bold"
           style={{ background: 'var(--color-cta)', color: '#fff' }}
         >
-          <span className="uppercase tracking-widest">Staff portal</span>
+          <span className="uppercase tracking-widest">{t('requireRole.staffPortal')}</span>
           <span className="truncate opacity-90 font-semibold">
             {identity.displayName} · {ROLE_LABELS[identity.role]}
             {Object.entries(identity.scope).filter(([, v]) => v).length > 0 && (
@@ -76,6 +78,7 @@ export function RequireRole({
 }
 
 function AccessRefused() {
+  const t = useT();
   return (
     <div
       className="min-h-screen grid place-items-center p-6"
@@ -89,7 +92,7 @@ function AccessRefused() {
         >
           <ShieldAlert size={26} />
         </div>
-        <h1 className="font-display font-bold text-xl text-content">Not available</h1>
+        <h1 className="font-display font-bold text-xl text-content">{t('requireRole.notAvailable')}</h1>
         <p className="text-sm text-content-3 mt-2 leading-relaxed">
           This area is restricted. If you believe you should have access,
           contact your department administrator.

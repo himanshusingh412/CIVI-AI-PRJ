@@ -11,6 +11,8 @@ import {
   fetchMe, fetchComplaints, isAuthError,
   type AdminComplaint, type MeResponse,
 } from '../../services/adminService';
+import { useT } from '../../i18n/I18nContext';
+import { statusLabel } from '../../i18n/labels';
 
 /**
  * The officer's working queue.
@@ -54,6 +56,7 @@ const PRIORITY_TOKEN: Record<string, string> = {
 const HOUR = 3600_000;
 
 export function OfficerWorkspace() {
+  const t = useT();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [rows, setRows] = useState<AdminComplaint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,9 +140,9 @@ export function OfficerWorkspace() {
       <div className="grid place-items-center py-16">
         <div className="surface bordered rounded-2xl p-8 max-w-md text-center elev-2">
           <AlertTriangle size={32} className="mx-auto mb-3" style={{ color: 'var(--color-danger)' }} aria-hidden="true" />
-          <h2 className="font-display font-bold text-lg text-content">Could not load your queue</h2>
+          <h2 className="font-display font-bold text-lg text-content">{t('officerWorkspace.couldNotLoadYourQueue')}</h2>
           <p className="text-sm text-content-3 mt-2">{error}</p>
-          <Button className="mt-5" size="sm" variant="secondary" onClick={load}>Try again</Button>
+          <Button className="mt-5" size="sm" variant="secondary" onClick={load}>{t('officerWorkspace.tryAgain')}</Button>
         </div>
       </div>
     );
@@ -149,7 +152,7 @@ export function OfficerWorkspace() {
     <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display font-bold text-2xl text-content">Your queue</h1>
+          <h1 className="font-display font-bold text-2xl text-content">{t('officerWorkspace.yourQueue')}</h1>
           <p className="text-sm text-content-3 mt-0.5">
             {me
               ? `${me.principal.displayName} · ${Object.entries(me.principal.scope)
@@ -179,7 +182,7 @@ export function OfficerWorkspace() {
       </SkeletonRegion>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 surface-2 bordered rounded-xl p-1" role="tablist" aria-label="Queue filter">
+        <div className="flex gap-1 surface-2 bordered rounded-xl p-1" role="tablist" aria-label={t('officerWorkspace.queueFilter')}>
           {FILTERS.map(f => (
             <button
               key={f.key}
@@ -199,10 +202,10 @@ export function OfficerWorkspace() {
 
         <div className="relative flex-1 min-w-[12rem]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-3" aria-hidden="true" />
-          <label htmlFor="queue-search" className="sr-only">Search your queue</label>
+          <label htmlFor="queue-search" className="sr-only">{t('officerWorkspace.searchYourQueue')}</label>
           <input
             id="queue-search" value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Reference, category, area…"
+            placeholder={t('officerWorkspace.referenceCategoryArea')}
             className="w-full h-10 pl-9 pr-3 rounded-xl text-[13px] bordered surface text-content
                        placeholder:text-[var(--color-content-3)] focus:outline-none focus:border-[var(--color-cta)]
                        focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-cta)_18%,transparent)]"
@@ -254,7 +257,7 @@ export function OfficerWorkspace() {
                       <span className="font-mono text-[11.5px] font-bold text-content-3">{r.id}</span>
                       <span className="text-[13.5px] font-bold text-content">{r.category}</span>
                       <span className="text-[11px] font-bold px-1.5 py-0.5 rounded surface-2 text-content-2">
-                        {r.statusLabel}
+                        {statusLabel(t, r.status)}
                       </span>
                     </span>
                     <span className="block text-[12.5px] text-content-3 mt-1 line-clamp-2 leading-snug">
@@ -302,11 +305,12 @@ export function OfficerWorkspace() {
  * shape and mean opposite things.
  */
 function SlaClock({ deadline, now, terminal }: { deadline: string; now: number; terminal: boolean }) {
+  const t = useT();
   const due = Date.parse(deadline);
   if (!Number.isFinite(due)) return null;
 
   if (terminal) {
-    return <span className="text-[11.5px] text-content-3 flex items-center gap-1"><Clock size={11} aria-hidden="true" /> Closed</span>;
+    return <span className="text-[11.5px] text-content-3 flex items-center gap-1"><Clock size={11} aria-hidden="true" /> {t('officerWorkspace.closed')}</span>;
   }
 
   const diff = due - now;

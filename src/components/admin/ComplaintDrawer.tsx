@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { X, Clock, MapPin, User, Building2, AlertTriangle, ShieldCheck, Image, MessageSquare, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../Button';
 import { changeStatus, addNote, isAuthError, type AdminComplaint } from '../../services/adminService';
+import { useT } from '../../i18n/I18nContext';
+import { statusLabel } from '../../i18n/labels';
 
 const PRIORITY_TOKEN: Record<string, string> = {
   Critical: 'var(--color-priority-critical)',
@@ -29,6 +31,11 @@ export function ComplaintDrawer({
   onClose: () => void;
   onUpdated: (c: AdminComplaint) => void;
 }) {
+  const t = useT();
+  // `t` is the translate function throughout this file. The transition and
+  // timeline maps below were originally written as `.map(t => …)`, which
+  // shadowed it in exactly two branches; they now bind `tx` and `ev` so that
+  // `t` means one thing everywhere in this component.
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [noteVisibility, setNoteVisibility] = useState<'internal' | 'public'>('internal');
@@ -103,7 +110,7 @@ export function ComplaintDrawer({
                 {complaint.priority}
               </span>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full surface-2 text-content-2">
-                {complaint.statusLabel}
+                {statusLabel(t, complaint.status)}
               </span>
               {overdue && (
                 <span
@@ -117,7 +124,7 @@ export function ComplaintDrawer({
           </div>
           <button
             onClick={onClose}
-            aria-label="Close details"
+            aria-label={t('complaintDrawer.closeDetails')}
             className="press w-9 h-9 rounded-full grid place-items-center surface-2 text-content-2 shrink-0"
           >
             <X size={16} aria-hidden="true" />
@@ -128,7 +135,7 @@ export function ComplaintDrawer({
           {/* Progress */}
           <div>
             <div className="flex justify-between text-[12px] font-bold text-content-3 mb-2">
-              <span>Progress</span>
+              <span>{t('complaintDrawer.progress')}</span>
               <span>{complaint.progress}%</span>
             </div>
             <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--color-surface-3)' }}>
@@ -157,7 +164,7 @@ export function ComplaintDrawer({
           </dl>
 
           <div className="surface-2 rounded-xl p-4">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">Description</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">{t('complaintDrawer.description')}</p>
             <p className="text-sm text-content-2 leading-relaxed">{complaint.description}</p>
           </div>
 
@@ -212,7 +219,7 @@ export function ComplaintDrawer({
 
           {/* Workflow actions — server-provided */}
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">Actions</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-2">{t('complaintDrawer.actions')}</p>
 
             {error && (
               <div
@@ -231,14 +238,14 @@ export function ComplaintDrawer({
               </p>
             ) : (
               <>
-                <label htmlFor="note" className="sr-only-focusable">Note (optional)</label>
+                <label htmlFor="note" className="sr-only-focusable">{t('complaintDrawer.noteOptional')}</label>
                 <textarea
                   id="note"
                   value={note}
                   onChange={e => setNote(e.target.value)}
                   maxLength={2000}
                   rows={2}
-                  placeholder="Add a note (optional)…"
+                  placeholder={t('complaintDrawer.addANoteOptional')}
                   className="field w-full rounded-xl p-3 text-sm outline-none border-2 mb-3 resize-none"
                   style={{
                     background: 'var(--color-surface)',
@@ -250,7 +257,7 @@ export function ComplaintDrawer({
                     and defaults to internal, because publishing an officer's
                     working note to the complainant is not recoverable. */}
                 <div className="flex items-center gap-1 mb-3 surface-2 bordered rounded-xl p-1 w-fit"
-                     role="group" aria-label="Who can see this note">
+                     role="group" aria-label={t('complaintDrawer.whoCanSeeThisNote')}>
                   {([
                     { key: 'internal' as const, label: 'Staff only', Icon: EyeOff },
                     { key: 'public' as const, label: 'Visible to citizen', Icon: Eye },
@@ -277,20 +284,20 @@ export function ComplaintDrawer({
                     icon={<MessageSquare size={14} />}
                     disabled={!note.trim()}
                     loading={savingNote}
-                    loadingText="Saving…"
+                    loadingText={t('complaintDrawer.saving')}
                     onClick={saveNote}
                   >
                     Save note only
                   </Button>
-                  {complaint.availableTransitions.map(t => (
+                  {complaint.availableTransitions.map(tx => (
                     <Button
-                      key={t.to}
+                      key={tx.to}
                       size="sm"
-                      variant={t.to === 'closed' ? 'primary' : 'secondary'}
-                      loadingText="Working…"
-                      onClick={() => doTransition(t.to)}
+                      variant={tx.to === 'closed' ? 'primary' : 'secondary'}
+                      loadingText={t('complaintDrawer.working')}
+                      onClick={() => doTransition(tx.to)}
                     >
-                      {t.label}
+                      {tx.label}
                     </Button>
                   ))}
                 </div>
@@ -300,15 +307,15 @@ export function ComplaintDrawer({
 
           {/* Timeline */}
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-3">Timeline</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-content-3 mb-3">{t('complaintDrawer.timeline')}</p>
             <ol className="relative pl-6">
               <span
                 aria-hidden="true"
                 className="absolute left-[7px] top-1 bottom-1 w-px"
                 style={{ background: 'var(--color-border)' }}
               />
-              {[...complaint.timeline].reverse().map((t, i) => (
-                <li key={`${t.at}-${i}`} className="relative pb-5 last:pb-0">
+              {[...complaint.timeline].reverse().map((ev, i) => (
+                <li key={`${ev.at}-${i}`} className="relative pb-5 last:pb-0">
                   <span
                     aria-hidden="true"
                     className="absolute -left-[22px] top-1 w-3.5 h-3.5 rounded-full border-2"
@@ -317,11 +324,11 @@ export function ComplaintDrawer({
                       borderColor: i === 0 ? 'var(--color-cta)' : 'var(--color-border-strong)',
                     }}
                   />
-                  <p className="text-sm font-bold text-content">{t.statusLabel ?? t.status}</p>
+                  <p className="text-sm font-bold text-content">{statusLabel(t, ev.status)}</p>
                   <p className="text-[12px] text-content-3">
-                    {new Date(t.at).toLocaleString()} · {t.actorName}
+                    {new Date(ev.at).toLocaleString()} · {ev.actorName}
                   </p>
-                  {t.note && <p className="text-[13px] text-content-2 mt-1">{t.note}</p>}
+                  {ev.note && <p className="text-[13px] text-content-2 mt-1">{ev.note}</p>}
                 </li>
               ))}
             </ol>

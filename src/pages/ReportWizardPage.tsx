@@ -134,7 +134,7 @@ export function ReportWizardPage() {
     const got = await getBrowserLocation();
     setLocating(false);
     if (got) { setCoords(got); setShowMap(true); }
-    else setError('Location is unavailable or was blocked. Type the address instead.');
+    else setError(t('reportWizard.locationIsUnavailableOrWas'));
   }, []);
 
   const addPhotos = (files: FileList | null) => {
@@ -142,7 +142,7 @@ export function ReportWizardPage() {
     const accepted: File[] = [];
     for (const f of Array.from(files)) {
       if (photos.length + accepted.length >= MAX_PHOTOS) break;
-      if (!f.type.startsWith('image/')) { setError('Photos only - JPG, PNG or WEBP.'); continue; }
+      if (!f.type.startsWith('image/')) { setError(t('reportWizard.photosOnlyJpgPngOr')); continue; }
       if (f.size > MAX_PHOTO_BYTES) { setError(`${f.name} is over 5 MB.`); continue; }
       accepted.push(f);
     }
@@ -249,11 +249,11 @@ export function ReportWizardPage() {
       <header className="h-14 shrink-0 glass border-b flex items-center gap-2 px-3 sm:px-5"
               style={{ borderColor: 'var(--color-border)' }}>
         <Link to="/portal" className="press w-9 h-9 rounded-xl grid place-items-center text-content-3 hover:text-cta transition-colors"
-              aria-label="Back to CivicAI">
+              aria-label={t('reportWizard.backToCivicai')}>
           <ArrowLeft size={17} aria-hidden="true" />
         </Link>
         <div className="min-w-0">
-          <h1 className="font-display font-bold text-[15px] leading-none truncate">File a complaint</h1>
+          <h1 className="font-display font-bold text-[15px] leading-none truncate">{t('reportWizard.fileAComplaint')}</h1>
           <p className="text-[10px] font-bold uppercase tracking-widest text-content-3">
             {step === 6 ? 'Filed' : `Step ${step + 1} of 6`}
           </p>
@@ -275,7 +275,7 @@ export function ReportWizardPage() {
                  style={{ background: 'var(--color-danger-pale)', color: 'var(--color-danger)' }}>
               <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span className="flex-1">{error}</span>
-              <button onClick={() => setError(null)} aria-label="Dismiss"><X size={14} aria-hidden="true" /></button>
+              <button onClick={() => setError(null)} aria-label={t('reportWizard.dismiss')}><X size={14} aria-hidden="true" /></button>
             </div>
           )}
 
@@ -323,11 +323,11 @@ export function ReportWizardPage() {
                 In your own words. Say when it started and who it affects, if you know.
               </p>
 
-              <label htmlFor="wiz-desc" className="sr-only">Describe the problem</label>
+              <label htmlFor="wiz-desc" className="sr-only">{t('reportWizard.describeTheProblem')}</label>
               <textarea
                 id="wiz-desc" rows={6} value={description}
                 onChange={e => setDescription(e.target.value.slice(0, 4000))}
-                placeholder="There has been no water supply in our street since Monday..."
+                placeholder={t('reportWizard.thereHasBeenNoWater')}
                 className="w-full mt-4 rounded-2xl p-4 text-[14px] bordered surface text-content
                            placeholder:text-[var(--color-content-3)] focus:outline-none
                            focus:border-[var(--color-cta)] resize-y leading-relaxed"
@@ -373,7 +373,7 @@ export function ReportWizardPage() {
 
               <div className="flex flex-wrap gap-2 mt-4">
                 <Button size="sm" variant="secondary" icon={<MapPin size={14} />}
-                        loading={locating} loadingText="Finding you..." onClick={useMyLocation}>
+                        loading={locating} loadingText={t('reportWizard.findingYou')} onClick={useMyLocation}>
                   Use my current location
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowMap(m => !m)}>
@@ -387,7 +387,7 @@ export function ReportWizardPage() {
               <input
                 id="wiz-addr" value={addressText}
                 onChange={e => setAddressText(e.target.value.slice(0, 200))}
-                placeholder="Sector 14, near the water tank, Dwarka"
+                placeholder={t('reportWizard.sector14NearTheWater')}
                 className="w-full h-12 rounded-xl px-3.5 text-[14px] bordered surface text-content
                            placeholder:text-[var(--color-content-3)] focus:outline-none focus:border-[var(--color-cta)]"
               />
@@ -497,7 +497,7 @@ export function ReportWizardPage() {
                   >
                     <span className="text-center">
                       <Camera size={20} className="mx-auto" aria-hidden="true" />
-                      <span className="block text-[11px] font-bold mt-1">Add photo</span>
+                      <span className="block text-[11px] font-bold mt-1">{t('reportWizard.addPhoto')}</span>
                     </span>
                   </button>
                 )}
@@ -523,7 +523,7 @@ export function ReportWizardPage() {
               {reviewing ? (
                 <div className="flex items-center gap-2 mt-6 text-content-3" role="status">
                   <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                  <span className="text-[13px]">Reading your complaint...</span>
+                  <span className="text-[13px]">{t('reportWizard.readingYourComplaint')}</span>
                 </div>
               ) : (
                 <>
@@ -541,7 +541,7 @@ export function ReportWizardPage() {
                         ))}
                       </ul>
                       <div className="flex gap-2 mt-3">
-                        <Button size="sm" variant="secondary" onClick={() => go(1)}>Add more detail</Button>
+                        <Button size="sm" variant="secondary" onClick={() => go(1)}>{t('reportWizard.addMoreDetail')}</Button>
                       </div>
                       <p className="text-[11.5px] mt-2.5 leading-relaxed" style={{ color: 'var(--color-warning)' }}>
                         You can file without these. Your complaint will be registered either way.
@@ -618,8 +618,8 @@ export function ReportWizardPage() {
               )}
 
               <div className="flex flex-wrap gap-2 justify-center mt-7">
-                <Button onClick={() => navigate('/portal')}>Track this complaint</Button>
-                <Button variant="secondary" onClick={startAnother}>File another</Button>
+                <Button onClick={() => navigate('/portal')}>{t('reportWizard.trackThisComplaint')}</Button>
+                <Button variant="secondary" onClick={startAnother}>{t('reportWizard.fileAnother')}</Button>
               </div>
             </section>
           )}
@@ -649,7 +649,7 @@ export function ReportWizardPage() {
                 Continue <ArrowRight size={16} aria-hidden="true" />
               </Button>
             ) : (
-              <Button loading={submitting} loadingText="Filing..." onClick={submit}>
+              <Button loading={submitting} loadingText={t('reportWizard.filing')} onClick={submit}>
                 File this complaint
               </Button>
             )}

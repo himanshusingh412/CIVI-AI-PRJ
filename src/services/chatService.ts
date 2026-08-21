@@ -51,11 +51,24 @@ export async function sendChat(
   message: string,
   history: ChatTurn[],
   coords?: { lat: number; lng: number } | null,
+  /**
+   * The language the citizen chose in the UI.
+   *
+   * The server prompt used to say "reply in the same language the citizen
+   * used", which asks the model to INFER the language from the message text.
+   * That fails in the two cases that matter most on this portal: a one-word
+   * message ("पानी"), and Hindi typed in Latin script ("paani nahi aa raha"),
+   * which reads as English to a classifier. The person already told us their
+   * language by picking it in the switcher — so send that instead of asking
+   * the model to guess it back.
+   */
+  language?: string,
 ): Promise<ChatResponse> {
   const payload = {
     message: message.slice(0, MAX_MESSAGE_CHARS),
     history: history.slice(-MAX_HISTORY),
     coords: coords ?? null,
+    language: language ?? 'en',
   };
 
   try {

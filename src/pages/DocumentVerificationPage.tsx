@@ -86,9 +86,9 @@ export function DocumentVerificationPage() {
         catch (e) { setError(e instanceof Error ? e.message : 'Could not list your documents.'); }
       })();
     } else if (status === 'failed') {
-      setError('DigiLocker authorisation did not complete. Nothing was shared.');
+      setError(t('documentVerification.digilockerAuthorisationDidNotComplete'));
     } else if (status === 'expired') {
-      setError('That authorisation request expired. Please start again.');
+      setError(t('documentVerification.thatAuthorisationRequestExpiredPlease'));
     }
     params.delete('digilocker');
     setParams(params, { replace: true });
@@ -128,11 +128,11 @@ export function DocumentVerificationPage() {
       <header className="h-14 shrink-0 glass border-b flex items-center gap-2 px-3 sm:px-5"
               style={{ borderColor: 'var(--color-border)' }}>
         <Link to="/portal" className="press w-9 h-9 rounded-xl grid place-items-center text-content-3 hover:text-cta transition-colors"
-              aria-label="Back to CivicAI">
+              aria-label={t('documentVerification.backToCivicai')}>
           <ArrowLeft size={17} aria-hidden="true" />
         </Link>
         <div className="min-w-0">
-          <h1 className="font-display font-bold text-[15px] leading-none truncate">Document verification</h1>
+          <h1 className="font-display font-bold text-[15px] leading-none truncate">{t('documentVerification.documentVerification')}</h1>
           <p className="text-[10px] font-bold uppercase tracking-widest text-content-3 truncate">
             Check before you apply
           </p>
@@ -170,7 +170,7 @@ export function DocumentVerificationPage() {
                    style={{ background: 'var(--color-surface-2)' }}>
             <Lock size={16} className="mt-0.5 shrink-0" style={{ color: 'var(--color-success)' }} aria-hidden="true" />
             <div className="text-[12.5px] text-content-2 leading-relaxed">
-              <strong className="text-content">Nothing here is stored.</strong>{' '}
+              <strong className="text-content">{t('documentVerification.nothingHereIsStored')}</strong>{' '}
               Your files are read, compared, and discarded. Nothing is written to
               any database, and everything is dropped automatically after{' '}
               {session?.limits.expiresInMinutes ?? 30} minutes. CivicAI never
@@ -196,7 +196,7 @@ export function DocumentVerificationPage() {
                  style={{ background: 'var(--color-info-pale)', color: 'var(--color-info)' }}>
               <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span className="flex-1">{notice}</span>
-              <button onClick={() => setNotice(null)} aria-label="Dismiss"><X size={14} aria-hidden="true" /></button>
+              <button onClick={() => setNotice(null)} aria-label={t('documentVerification.dismiss')}><X size={14} aria-hidden="true" /></button>
             </div>
           )}
           {error && (
@@ -204,7 +204,7 @@ export function DocumentVerificationPage() {
                  style={{ background: 'var(--color-danger-pale)', color: 'var(--color-danger)' }}>
               <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span className="flex-1">{error}</span>
-              <button onClick={() => setError(null)} aria-label="Dismiss"><X size={14} aria-hidden="true" /></button>
+              <button onClick={() => setError(null)} aria-label={t('documentVerification.dismiss')}><X size={14} aria-hidden="true" /></button>
             </div>
           )}
 
@@ -221,7 +221,7 @@ export function DocumentVerificationPage() {
               }}
             >
               <Upload size={20} className="mx-auto" style={{ color: 'var(--color-cta)' }} aria-hidden="true" />
-              <p className="text-[13.5px] font-bold text-content mt-2">Upload a document</p>
+              <p className="text-[13.5px] font-bold text-content mt-2">{t('documentVerification.uploadADocument')}</p>
               <p className="text-[11.5px] text-content-3 mt-1 leading-relaxed">
                 JPG, PNG or PDF, up to 8&nbsp;MB. A clear photo of the whole page works.
               </p>
@@ -233,7 +233,7 @@ export function DocumentVerificationPage() {
               />
               <Button
                 className="mt-3" size="sm" variant="secondary"
-                loading={busy === 'upload'} loadingText="Reading..."
+                loading={busy === 'upload'} loadingText={t('documentVerification.reading')}
                 onClick={() => fileRef.current?.click()}
               >
                 Choose files
@@ -253,7 +253,7 @@ export function DocumentVerificationPage() {
               </p>
               <Button
                 className="mt-3" size="sm" variant="secondary"
-                loading={busy === 'digilocker'} loadingText="Opening..."
+                loading={busy === 'digilocker'} loadingText={t('documentVerification.opening')}
                 onClick={() => void withBusy('digilocker', async () => {
                   const started = await startDigiLocker();
                   // Full navigation, not a fetch: the real flow hands the
@@ -303,7 +303,7 @@ export function DocumentVerificationPage() {
               <div className="flex gap-2 mt-3">
                 <Button
                   size="sm" disabled={!picked.size}
-                  loading={busy === 'import'} loadingText="Importing..."
+                  loading={busy === 'import'} loadingText={t('documentVerification.importing')}
                   onClick={() => void withBusy('import', async () => {
                     const res = await importDigiLockerDocuments([...picked]);
                     setSession(res); setLocker(null); setPicked(new Set());
@@ -341,7 +341,7 @@ export function DocumentVerificationPage() {
 
               <Button
                 className="mt-4" fullWidth
-                loading={busy === 'verify'} loadingText="Comparing your documents..."
+                loading={busy === 'verify'} loadingText={t('documentVerification.comparingYourDocuments')}
                 disabled={docs.length < 2}
                 onClick={() => void withBusy('verify', async () => { setSession(await verifyDocuments()); })}
               >

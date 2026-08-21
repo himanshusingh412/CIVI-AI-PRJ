@@ -54,7 +54,7 @@ import {
 import { MapContainer, TileLayer, Popup, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Complaint, ViewType, ChatMessage, SystemNotification } from './types';
-import { useI18n } from './i18n/I18nContext';
+import { useI18n, useT } from './i18n/I18nContext';
 import { LanguagePicker } from './components/LanguagePicker';
 import { useLiveComplaints } from './hooks/useLiveComplaints';
 import { createComplaint, rateComplaint } from './services/complaintService';
@@ -398,7 +398,7 @@ export default function App() {
   /** Routes a message to the AI backend and syncs the live map. */
   const runAiTurn = async (text: string) => {
     setIsTyping(true);
-    const res = await sendChat(text, chatHistory, userCoords);
+    const res = await sendChat(text, chatHistory, userCoords, lang);
     setIsTyping(false);
 
     setChatHistory(prev => [...prev, { role: 'assistant' as const, content: res.reply }].slice(-MAX_CHAT_HISTORY));
@@ -810,7 +810,7 @@ export default function App() {
       className="relative isolate flex flex-col h-screen overflow-hidden transition-colors duration-300"
       style={{ background: 'var(--color-bg-main)', color: 'var(--color-content)' }}
     >
-      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <a href="#main-content" className="skip-link">{t('app.skipToMainContent')}</a>
 
       {/* Ambient depth for the citizen shell. Previously this was blur blobs
           gated on `isDarkMode`, which left light mode visually flat. Threads
@@ -879,7 +879,7 @@ export default function App() {
                 {showNotifications && (
                   <motion.div
                     role="dialog"
-                    aria-label="Notifications"
+                    aria-label={t('app.notifications')}
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -889,7 +889,7 @@ export default function App() {
                       className="p-4 flex justify-between items-center surface-2"
                       style={{ borderBottom: '1px solid var(--color-border)' }}
                     >
-                      <span className="text-[12px] font-black uppercase tracking-widest text-content">Notifications</span>
+                      <span className="text-[12px] font-black uppercase tracking-widest text-content">{t('app.notifications')}</span>
                       <button
                         onClick={markAllNotificationsRead}
                         disabled={unreadCount === 0}
@@ -957,8 +957,8 @@ export default function App() {
             <button
               onClick={handleLogout}
               disabled={signingOut}
-              title="Sign out"
-              aria-label="Sign out"
+              title={t('app.signOut')}
+              aria-label={t('app.signOut')}
               aria-busy={signingOut || undefined}
               className="w-10 h-10 rounded-xl grid place-items-center text-content-3 hover:text-danger transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -982,9 +982,9 @@ export default function App() {
         <aside
           className="hidden lg:flex w-[240px] glass border-r flex-col py-6 shrink-0 overflow-y-auto"
           style={{ borderColor: 'var(--color-border)' }}
-          aria-label="Main navigation"
+          aria-label={t('app.mainNavigation')}
         >
-          <div className="px-5 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">Main Menu</div>
+          <div className="px-5 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">{t('app.mainMenu')}</div>
           <SidebarItem
             onClick={() => navigate('/portal/report')}
             icon={<ClipboardListIcon size={18} />}
@@ -1031,7 +1031,7 @@ export default function App() {
             label={t('nav.feed')} 
           />
 
-          <div className="px-5 mt-6 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">Categories</div>
+          <div className="px-5 mt-6 mb-2 text-[12px] font-bold text-content-3 tracking-[0.15em] uppercase">{t('app.categories')}</div>
           <SidebarItem 
             icon={<MapPin size={18} />} 
             label={lang === 'en' ? 'Roads & Infra' : 'सड़क व ढांचा'} 
@@ -1170,7 +1170,7 @@ export default function App() {
                             radius={7}
                             pathOptions={{ color: chart.markerUser, fillOpacity: 0.9, weight: 2 }}
                           >
-                            <Popup><span className="text-xs">You are here</span></Popup>
+                            <Popup><span className="text-xs">{t('app.youAreHere')}</span></Popup>
                           </CircleMarker>
                         )}
                       </MapContainer>
@@ -1181,7 +1181,7 @@ export default function App() {
                           if (coords) { setUserCoords(coords); setMapFlyTarget(coords); showToast('Centered on your location'); }
                           else showToast('Could not access your location');
                         }}
-                        title="Locate me"
+                        title={t('app.locateMe')}
                         className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl glass-strong border shadow-lg flex items-center justify-center text-content hover:text-cta hover:-translate-y-0.5 transition-all"
                       >
                         <Locate size={16} />
@@ -1216,7 +1216,7 @@ export default function App() {
                         }`}>
                           {m.content}
                           {m.content.includes("Photo attached!") && pendingComplaint.photoUrl && (
-                            <img src={pendingComplaint.photoUrl} className="mt-2 rounded-lg max-h-40 w-full object-cover border border-[var(--color-border)]" alt="Complaint Attachment" />
+                            <img src={pendingComplaint.photoUrl} className="mt-2 rounded-lg max-h-40 w-full object-cover border border-[var(--color-border)]" alt={t('app.complaintAttachment')} />
                           )}
                         </div>
                         <span className={`text-[12px] text-content-3 mt-1 ${m.type === 'user' ? 'text-right' : ''}`}>{m.timestamp}</span>
@@ -1270,13 +1270,24 @@ export default function App() {
                         ))}
                       </div>
                     ) : (
-                      ['Register a Complaint', 'Status Check', 'Emergency'].map(label => (
-                        <button 
-                          key={label}
-                          onClick={() => handleSendMessage(lang === 'hi' ? (label === 'Emergency' ? 'आपातकाल' : label === 'Status Check' ? 'स्थिति' : 'शिकायत दर्ज करें') : label)}
+                      ([
+                        // [translation key, message actually sent to the assistant].
+                        // These were one array of English strings doing both jobs,
+                        // with the Hindi text inlined in a nested ternary at the
+                        // call site — so the chip could only ever be bilingual by
+                        // hand-coding every language. The label is now a key like
+                        // every other string, and the message is sent in the
+                        // citizen's own language.
+                        ['app.registerAComplaint', t('app.registerAComplaint')],
+                        ['app.statusCheck', t('app.statusCheck')],
+                        ['app.emergency', t('app.emergency')],
+                      ] as const).map(([key, message]) => (
+                        <button
+                          key={key}
+                          onClick={() => handleSendMessage(message)}
                           className="px-4 py-1.5 surface border border-[var(--color-border-strong)] rounded-full text-xs font-semibold hover:border-saffron hover:text-saffron transition-all"
                         >
-                          {label}
+                          {message}
                         </button>
                       ))
                     )}
@@ -1288,13 +1299,13 @@ export default function App() {
                     <div className="flex items-center gap-1">
                       <label
                         htmlFor="photo-upload"
-                        title="Attach a photo"
+                        title={t('app.attachAPhoto')}
                         className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-cta ${
                           pendingComplaint.photoUrl ? 'bg-saffron/10 text-saffron' : 'text-content-3 hover:text-saffron'
                         }`}
                       >
                         <Camera size={18} aria-hidden="true" />
-                        <span className="sr-only-focusable">Attach a photo</span>
+                        <span className="sr-only-focusable">{t('app.attachAPhoto')}</span>
                         <input
                           id="photo-upload"
                           type="file"
@@ -1338,7 +1349,7 @@ export default function App() {
                     <button
                       type="submit"
                       disabled={!chatInput.trim() || isTyping}
-                      aria-label="Send message"
+                      aria-label={t('app.sendMessage')}
                       className="btn-sheen w-10 h-10 bg-gradient-to-br from-cta to-saffron text-white rounded-full flex items-center justify-center hover:shadow-lg hover:-translate-y-0.5 transition-all shrink-0 disabled:opacity-40 disabled:hover:translate-y-0 disabled:cursor-not-allowed disabled:hover:shadow-none"
                     >
                       <Send size={16} aria-hidden="true" />
@@ -1368,19 +1379,19 @@ export default function App() {
                       <button
                         onClick={() => setDashboardTab('overview')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'overview' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
-                      >Overview</button>
+                      >{t('app.overview')}</button>
                       <button
                         onClick={() => setDashboardTab('analytics')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'analytics' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
-                      >Analytics</button>
+                      >{t('app.analytics')}</button>
                       <button
                         onClick={() => setDashboardTab('workload')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'workload' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
-                      >Workload</button>
+                      >{t('app.workload')}</button>
                       <button
                         onClick={() => setDashboardTab('heatmap')}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dashboardTab === 'heatmap' ? 'bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white shadow-sm' : 'text-content-2 hover:text-cta '}`}
-                      >Heatmap</button>
+                      >{t('app.heatmap')}</button>
                     </div>
                     <button
                       onClick={exportToCSV}
@@ -1402,14 +1413,14 @@ export default function App() {
 
                     <div className="flex-1 surface rounded-2xl border border-[var(--color-border)] elev-1 overflow-hidden flex flex-col">
                       <div className="px-6 py-4 surface-2 border-b border-[var(--color-border)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <h3 className="font-bold text-sm tracking-wide shrink-0">COMPLAINT REGISTRY</h3>
+                        <h3 className="font-bold text-sm tracking-wide shrink-0">{t('app.complaintRegistry')}</h3>
 
                         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                           <div className="relative flex-1 sm:w-64">
                             <Search className="absolute left-3 top-2.5 text-content-3" size={14} />
                             <input
                               type="text"
-                              placeholder="Search complaints..."
+                              placeholder={t('app.searchComplaints')}
                               value={searchQuery}
                               onChange={(e) => setSearchQuery(e.target.value)}
                               className="w-full h-9 pl-9 pr-4 surface rounded-lg border border-[var(--color-border-strong)] text-xs focus:ring-1 focus:ring-cta focus:border-cta dark:focus:ring-cta dark:focus:border-cta transition-all"
@@ -1436,11 +1447,11 @@ export default function App() {
                           <thead>
                             <tr className="border-b border-[var(--color-border)] sticky top-0 surface z-10">
                               <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">ID</th>
-                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Category</th>
-                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Description</th>
-                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Status</th>
-                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">SLA Timer</th>
-                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">Actions</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">{t('app.category')}</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">{t('app.description')}</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">{t('app.status')}</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">{t('app.slaTimer')}</th>
+                              <th className="px-6 py-4 text-[12px] font-bold text-content-3 uppercase">{t('app.actions')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[var(--color-border)]">
@@ -1476,7 +1487,7 @@ export default function App() {
                                     <button
                                       onClick={() => setSelectedComplaint(c)}
                                       className="btn-sheen px-3 py-1.5 bg-gradient-to-r from-navy to-navy-light dark:from-cta dark:to-cta-hover text-white rounded-lg text-[12px] font-bold hover:shadow-md transition-all"
-                                    >VIEW DETAILS</button>
+                                    >{t('app.viewDetails')}</button>
                                   </td>
                                 </tr>
                               ))
@@ -1494,7 +1505,7 @@ export default function App() {
                       <div className="surface p-6 rounded-2xl border border-[var(--color-border)] elev-1 flex flex-col gap-4">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-saffron" size={20} />
-                          <h3 className="font-display font-bold text-sm">Complaints by Category</h3>
+                          <h3 className="font-display font-bold text-sm">{t('app.complaintsByCategory')}</h3>
                         </div>
                         <div className="h-[300px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
@@ -1560,15 +1571,15 @@ export default function App() {
 
                     <div className="surface p-6 rounded-2xl border border-[var(--color-border)] elev-1">
                       <div className="flex items-center justify-between mb-6">
-                        <h3 className="font-display font-bold text-sm">Resolution Performance</h3>
+                        <h3 className="font-display font-bold text-sm">{t('app.resolutionPerformance')}</h3>
                         <div className="flex items-center gap-4">
                           <div className="flex items-center gap-1.5">
                             <div className="w-2.5 h-2.5 rounded-full bg-cta"></div>
-                            <span className="text-[12px] font-bold text-content-2 uppercase">Total</span>
+                            <span className="text-[12px] font-bold text-content-2 uppercase">{t('app.total')}</span>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                            <span className="text-[12px] font-bold text-content-2 uppercase">Resolved</span>
+                            <span className="text-[12px] font-bold text-content-2 uppercase">{t('app.resolved')}</span>
                           </div>
                         </div>
                       </div>
@@ -1606,22 +1617,22 @@ export default function App() {
 
                           <div className="grid grid-cols-3 gap-3">
                             <div className="p-3 surface-2 rounded-2xl flex flex-col gap-1">
-                              <span className="text-[11px] font-bold text-content-3 uppercase tracking-tighter">Assigned</span>
+                              <span className="text-[11px] font-bold text-content-3 uppercase tracking-tighter">{t('app.assigned')}</span>
                               <span className="text-xl font-display font-bold text-content">{off.count}</span>
                             </div>
                             <div className="p-3 bg-green-50 rounded-2xl flex flex-col gap-1">
-                              <span className="text-[11px] font-bold text-green-400 uppercase tracking-tighter">Solved</span>
+                              <span className="text-[11px] font-bold text-green-400 uppercase tracking-tighter">{t('app.solved')}</span>
                               <span className="text-xl font-display font-bold text-green-600">{off.solved}</span>
                             </div>
                             <div className="p-3 bg-orange-50 rounded-2xl flex flex-col gap-1">
-                              <span className="text-[11px] font-bold text-orange-400 uppercase tracking-tighter">Pending</span>
+                              <span className="text-[11px] font-bold text-orange-400 uppercase tracking-tighter">{t('app.pending')}</span>
                               <span className="text-xl font-display font-bold text-orange-600">{off.pending}</span>
                             </div>
                           </div>
 
                           <div className="flex flex-col gap-2">
                              <div className="flex justify-between items-center text-[12px] font-bold text-content-3 uppercase">
-                               <span>Efficiency Rate</span>
+                               <span>{t('app.efficiencyRate')}</span>
                                <span>{off.count === 0 ? 0 : Math.round((off.solved / off.count) * 100)}%</span>
                              </div>
                              <div className="h-2 surface-2 rounded-full overflow-hidden">
@@ -1636,7 +1647,7 @@ export default function App() {
                           <button
                             onClick={() => setSelectedOfficer(off)}
                             className="w-full py-2 surface-2 border border-[var(--color-border-strong)] rounded-xl text-xs font-bold text-content hover:bg-navy hover:text-white hover:border-cta dark:hover:bg-cta dark:hover:border-cta transition-all"
-                          >View Performance Report</button>
+                          >{t('app.viewPerformanceReport')}</button>
                         </TiltCard>
                       ))}
                     </div>
@@ -1647,13 +1658,13 @@ export default function App() {
                   <div className="flex-1 surface rounded-3xl border border-[var(--color-border)] elev-1 overflow-hidden flex flex-col p-4">
                     <div className="flex items-center justify-between mb-4 px-2">
                        <div className="flex flex-col">
-                          <h3 className="font-display font-bold text-content text-sm">Citizen Complaint Heatmap</h3>
-                          <p className="text-[12px] font-bold text-content-3 uppercase">Interactive spatial density map</p>
+                          <h3 className="font-display font-bold text-content text-sm">{t('app.citizenComplaintHeatmap')}</h3>
+                          <p className="text-[12px] font-bold text-content-3 uppercase">{t('app.interactiveSpatialDensityMap')}</p>
                        </div>
                        <div className="flex gap-4">
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">Critical</span></div>
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">High</span></div>
-                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">Normal</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">{t('app.critical')}</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">{t('app.high')}</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[12px] font-bold text-content-2 uppercase">{t('app.normal')}</span></div>
                        </div>
                     </div>
                     <div className={`flex-1 rounded-2xl overflow-hidden border border-[var(--color-border)]  relative z-10 shadow-inner map-premium ${isDarkMode ? 'map-dark' : ''}`}>
@@ -1690,7 +1701,7 @@ export default function App() {
                           if (coords) { setUserCoords(coords); setMapFlyTarget(coords); showToast('Centered on your location'); }
                           else showToast('Could not access your location');
                         }}
-                        title="Locate me"
+                        title={t('app.locateMe')}
                         className="absolute top-3 right-3 z-[500] w-9 h-9 rounded-xl glass-strong border shadow-lg flex items-center justify-center text-content hover:text-cta hover:-translate-y-0.5 transition-all"
                       >
                         <Locate size={16} />
@@ -1712,21 +1723,21 @@ export default function App() {
               >
                 <div className="max-w-4xl mx-auto space-y-8">
                   <div className="text-center py-8">
-                    <h2 className="text-3xl font-display font-black text-content mb-2">Live Transparency Feed</h2>
-                    <p className="text-content-3">Real-time log of community resolutions and civic progress.</p>
+                    <h2 className="text-3xl font-display font-black text-content mb-2">{t('app.liveTransparencyFeed')}</h2>
+                    <p className="text-content-3">{t('app.realtimeLogOfCommunityResolutions')}</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
-                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">Resolved This Week</div>
+                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">{t('app.resolvedThisWeek')}</div>
                       <div className="text-4xl font-display font-bold text-green-500">{stats.resolved + 12}</div>
                     </div>
                     <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
-                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">Avg. Resolution Speed</div>
+                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">{t('app.avgResolutionSpeed')}</div>
                       <div className="text-4xl font-display font-bold text-blue-500">22.4h</div>
                     </div>
                     <div className="surface p-6 rounded-3xl border border-[var(--color-border)] elev-1">
-                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">Public Trust Score</div>
+                      <div className="text-[12px] font-black text-content-3 uppercase mb-2">{t('app.publicTrustScore')}</div>
                       <div className="text-4xl font-display font-bold text-saffron">98.2%</div>
                     </div>
                   </div>
@@ -1795,7 +1806,7 @@ export default function App() {
                         <div className="col-span-2 p-6 surface rounded-3xl border border-[var(--color-border)] elev-1 flex flex-col gap-6">
                            <div className="flex justify-between items-start">
                               <div className="flex flex-col gap-1">
-                                <span className="text-[12px] font-bold text-content-3 tracking-widest uppercase">Complaint Progress</span>
+                                <span className="text-[12px] font-bold text-content-3 tracking-widest uppercase">{t('app.complaintProgress')}</span>
                                 <h3 className="font-display font-bold text-xl">{c.category}</h3>
                               </div>
                               <StatusBadge status={c.status} />
@@ -1817,8 +1828,8 @@ export default function App() {
                        <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center">
                          <AlertTriangle size={22} />
                        </div>
-                       <p className="font-bold text-content">No complaint found</p>
-                       <p className="text-sm text-content-3">Double-check the ID — it should look like CIV-20260430-001.</p>
+                       <p className="font-bold text-content">{t('app.noComplaintFound')}</p>
+                       <p className="text-sm text-content-3">{t('app.doublecheckTheIdItShould')}</p>
                      </div>
                    )}
                 </div>
@@ -1831,16 +1842,16 @@ export default function App() {
         {/* Right Sidebar - Info/Recent */}
         <aside
           className="hidden xl:flex w-[300px] glass border-l border-[var(--color-border)] flex-col p-6 shrink-0 gap-8 overflow-y-auto"
-          aria-label="Summary and recent activity"
+          aria-label={t('app.summaryAndRecentActivity')}
         >
            <div className="flex flex-col gap-3">
              <div className="flex items-center gap-2 mb-1">
                <div className="w-2 h-2 rounded-full bg-saffron tracking-tight"></div>
                <h3 className="font-bold text-sm uppercase">{lang === 'en' ? 'Quick Stats' : 'त्वरित आँकड़े'}</h3>
              </div>
-             <MiniStat color="navy" label="Total Applications" value={stats.total} icon={<History size={16}/>} />
-             <MiniStat color="saffron" label="Awaiting Action" value={stats.pending} icon={<Clock size={16}/>} />
-             <MiniStat color="green" label="Resolved Cases" value={stats.resolved} icon={<CheckCircle2 size={16}/>} />
+             <MiniStat color="navy" label={t('app.totalApplications')} value={stats.total} icon={<History size={16}/>} />
+             <MiniStat color="saffron" label={t('app.awaitingAction')} value={stats.pending} icon={<Clock size={16}/>} />
+             <MiniStat color="green" label={t('app.resolvedCases')} value={stats.resolved} icon={<CheckCircle2 size={16}/>} />
            </div>
 
            <div className="flex flex-col gap-4 overflow-hidden">
@@ -1889,7 +1900,7 @@ export default function App() {
                   <div className="aurora-blob w-40 h-40 surface -top-10 -right-10" />
                 </div>
                 <div className="relative">
-                  <h3 className="font-display font-bold text-2xl">Complaint Profile</h3>
+                  <h3 className="font-display font-bold text-2xl">{t('app.complaintProfile')}</h3>
                   <p className="text-white/60 text-sm mt-1">Reference ID: {selectedComplaint.id}</p>
                 </div>
                 <button
@@ -1912,7 +1923,7 @@ export default function App() {
                 </div>
 
                 <div className="surface-2 p-6 rounded-2xl border border-[var(--color-border)]">
-                  <span className="text-[12px] font-bold text-content-3 uppercase tracking-widest block mb-2">Detailed Issue Description</span>
+                  <span className="text-[12px] font-bold text-content-3 uppercase tracking-widest block mb-2">{t('app.detailedIssueDescription')}</span>
                   <p className="text-sm text-content leading-relaxed italic">{selectedComplaint.description}</p>
                 </div>
 
@@ -1955,7 +1966,7 @@ export default function App() {
                   <button
                     onClick={() => setSelectedComplaint(null)}
                     className="px-8 h-12 surface-2 text-content-2 rounded-2xl font-bold border border-[var(--color-border-strong)] hover:bg-[var(--color-surface)] hover:border-cta transition-all"
-                  >Close</button>
+                  >{t('app.close')}</button>
                 </div>
               </div>
             </motion.div>
@@ -2210,6 +2221,7 @@ function TimelineStep({ done, current, label, date, desc }: any) {
 }
 
 function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
+  const t = useT();
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [feedback, setFeedback] = useState('');
@@ -2225,8 +2237,8 @@ function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
           <div className="w-20 h-20 bg-green-50 text-green-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={40} />
           </div>
-          <h3 className="font-display font-bold text-2xl text-content">Resolution Feedback</h3>
-          <p className="text-content-3 text-sm mt-2">How was your experience for <span className="font-mono text-content dark:text-saffron font-bold">{complaint.id}</span>?</p>
+          <h3 className="font-display font-bold text-2xl text-content">{t('app.resolutionFeedback')}</h3>
+          <p className="text-content-3 text-sm mt-2">{t('app.howWasYourExperienceFor')} <span className="font-mono text-content dark:text-saffron font-bold">{complaint.id}</span>?</p>
         </div>
 
         <div className="flex justify-center gap-2 my-8">
@@ -2247,7 +2259,7 @@ function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
         </div>
 
         <textarea 
-          placeholder="Detailed feedback..."
+          placeholder={t('app.detailedFeedback')}
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
           className="w-full surface-2 border border-[var(--color-border)] rounded-2xl p-4 text-xs h-24 focus:ring-2 focus:ring-cta outline-none resize-none mb-6"
@@ -2265,6 +2277,7 @@ function ResolutionFeedbackModal({ complaint, onClose, onSubmit }: any) {
 }
 
 function OfficerReportModal({ officer, onClose }: { officer: { name: string; ward: string; count: number; solved: number; pending: number; rating: number }; onClose: () => void }) {
+  const t = useT();
   const efficiency = officer.count === 0 ? 0 : Math.round((officer.solved / officer.count) * 100);
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-navy/70 dark:bg-black/70 backdrop-blur-md">
@@ -2294,22 +2307,22 @@ function OfficerReportModal({ officer, onClose }: { officer: { name: string; war
         <div className="p-8 space-y-6">
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3 surface-2 rounded-2xl flex flex-col gap-1 text-center">
-              <span className="text-[11px] font-bold text-content-3 uppercase">Assigned</span>
+              <span className="text-[11px] font-bold text-content-3 uppercase">{t('app.assigned')}</span>
               <span className="text-2xl font-display font-bold text-content">{officer.count}</span>
             </div>
             <div className="p-3 bg-green-50 rounded-2xl flex flex-col gap-1 text-center">
-              <span className="text-[11px] font-bold text-green-500 uppercase">Solved</span>
+              <span className="text-[11px] font-bold text-green-500 uppercase">{t('app.solved')}</span>
               <span className="text-2xl font-display font-bold text-green-600">{officer.solved}</span>
             </div>
             <div className="p-3 bg-orange-50 rounded-2xl flex flex-col gap-1 text-center">
-              <span className="text-[11px] font-bold text-orange-400 uppercase">Pending</span>
+              <span className="text-[11px] font-bold text-orange-400 uppercase">{t('app.pending')}</span>
               <span className="text-2xl font-display font-bold text-orange-600">{officer.pending}</span>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center text-[12px] font-bold text-content-3 uppercase">
-              <span className="flex items-center gap-1.5"><Gauge size={12} /> Efficiency Rate</span>
+              <span className="flex items-center gap-1.5"><Gauge size={12} /> {t('app.efficiencyRate')}</span>
               <span>{efficiency}%</span>
             </div>
             <div className="h-2.5 surface-2 rounded-full overflow-hidden">
@@ -2323,14 +2336,14 @@ function OfficerReportModal({ officer, onClose }: { officer: { name: string; war
           </div>
 
           <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-2xl">
-            <span className="text-xs font-bold text-content-2 flex items-center gap-2"><Briefcase size={14} /> Citizen Rating</span>
+            <span className="text-xs font-bold text-content-2 flex items-center gap-2"><Briefcase size={14} /> {t('app.citizenRating')}</span>
             <span className="text-sm font-bold text-yellow-600 flex items-center gap-1">★ {officer.rating.toFixed(1)} / 5.0</span>
           </div>
 
           <button
             onClick={onClose}
             className="w-full h-12 surface-2 text-content-2 rounded-2xl font-bold border border-[var(--color-border-strong)] hover:bg-[var(--color-surface)] hover:border-cta transition-all"
-          >Close</button>
+          >{t('app.close')}</button>
         </div>
       </motion.div>
     </div>

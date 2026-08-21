@@ -5,6 +5,7 @@ import { PageBackground } from '../components/backgrounds/PageBackground';
 import { DemoModeBanner } from '../components/IntegrationBadge';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useT } from '../i18n/I18nContext';
 
 /**
  * Shared chrome for every staff surface.
@@ -27,6 +28,7 @@ export function StaffShell({
   subtitle: string;
   children: React.ReactNode;
 }) {
+  const t = useT();
   const { signOut, signingOut } = useAuth();
   const { isDark, toggleTheme } = useTheme();
 
@@ -42,7 +44,7 @@ export function StaffShell({
         className="h-16 glass border-b px-4 sm:px-8 flex items-center justify-between shrink-0"
         style={{ borderColor: 'var(--color-border)' }}
       >
-        <Link to="/" className="min-w-0" aria-label="CivicAI home">
+        <Link to="/" className="min-w-0" aria-label={t('staffShell.civicaiHome')}>
           <h1 className="font-display font-bold text-lg tracking-tight text-gradient-premium">
             {title}
           </h1>
@@ -63,7 +65,7 @@ export function StaffShell({
           <button
             onClick={() => void signOut()}
             disabled={signingOut}
-            aria-label="Sign out"
+            aria-label={t('staffShell.signOut')}
             aria-busy={signingOut || undefined}
             className="w-10 h-10 rounded-xl grid place-items-center text-content-3
                        hover:text-danger transition-colors disabled:opacity-50"
