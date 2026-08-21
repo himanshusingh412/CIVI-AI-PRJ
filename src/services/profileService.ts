@@ -8,6 +8,11 @@ export interface CitizenProfile {
   localBody: string;
 }
 
+function csrfHeader(): Record<string, string> {
+  const m = typeof document !== 'undefined' ? document.cookie.match(/(?:^|; )civicai_csrf=([^;]*)/) : null;
+  return m ? { 'x-csrf-token': decodeURIComponent(m[1]) } : {};
+}
+
 export async function fetchCitizenProfile(): Promise<CitizenProfile> {
   const res = await fetch('/api/citizen/profile', { credentials: 'same-origin' });
   const data = await res.json().catch(() => ({}));
@@ -18,7 +23,10 @@ export async function fetchCitizenProfile(): Promise<CitizenProfile> {
 export async function updateCitizenProfile(update: Partial<CitizenProfile>): Promise<CitizenProfile> {
   const res = await fetch('/api/citizen/profile', {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...csrfHeader(),
+    },
     credentials: 'same-origin',
     body: JSON.stringify(update),
   });
