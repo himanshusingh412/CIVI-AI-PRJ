@@ -34,7 +34,9 @@ returns fixtures. Both are labelled Demo.
 | `GOOGLE_CLIENT_ID` | No | Public by design. Also exposed as `VITE_GOOGLE_CLIENT_ID` for the build-time fallback; the authoritative value is served at runtime from `/api/config`. |
 | `SUPER_ADMIN_EMAIL` | No | Break-glass. Grants super_admin to this Google identity. |
 | `SUPER_ADMIN_PHONE` | No | Break-glass, SMS sign-in. Either one alone is enough. |
-| `STAFF_DIRECTORY` | No | JSON array, for deployments with real staff but no database. See `server/staff.ts`. |
+| `STAFF_DIRECTORY` | No | JSON array granting role + scope, for deployments with real staff but no database. See `server/staff.ts` and [STAFF_ACCESS.md](STAFF_ACCESS.md). |
+| `ADMIN_CREDENTIALS` | **Yes** | JSON array of `{employeeId, subject, passwordHash}` for `/admin/login`. Contains scrypt hashes — **never** prefix with `VITE_`. Must agree with `STAFF_DIRECTORY` on `subject`; see [STAFF_ACCESS.md](STAFF_ACCESS.md). |
+| `ADMIN_DEMO_PASSWORD` | **Yes** | Password for the nine built-in demo employee IDs. Ignored in production and with demo mode off. |
 | `AUTH_DEV_OTP` | No | Echoes the OTP in the API response. **Ignored when `NODE_ENV=production`.** Needed for the demo accounts. |
 | `TURNSTILE_SECRET_KEY` | **Yes** | Without it, a honeypot plus form-timing heuristic is used. |
 
