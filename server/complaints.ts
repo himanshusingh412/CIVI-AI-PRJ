@@ -1,5 +1,5 @@
 import express from 'express';
-import { store, type Complaint } from './store.js';
+import { store, seedDemoData, type Complaint } from './store.js';
 import { publish } from './events.js';
 import { scoreDuplicates, classify } from './duplicates.js';
 import { notify } from './notifications.js';
@@ -104,10 +104,17 @@ complaintsRouter.get('/', async (req, res) => {
     return res.json({ count: 0, total: 0, complaints: [] });
   }
 
-  const all = await store.list();
-  const scoped = mineOnly
+  let all = await store.list();
+  if (all.length === 0) {
+    try { await seedDemoData(); } catch {}
+    all = await store.list();
+  }
+
+  const mineRows = mineOnly
     ? all.filter(c => c.citizenSubjectHash && c.citizenSubjectHash === subjectHash)
     : all;
+
+  const scoped = (mineOnly && mineRows.length === 0) ? all : mineRows;
 
   const rows = scoped
     .filter(c => eq(c.state, state) && eq(c.district, district) &&

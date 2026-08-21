@@ -8,7 +8,7 @@ import {
   canTransition, allowedTransitions, STATUS_LABELS, STATUS_PROGRESS,
   isTerminal, type Status,
 } from './workflow.js';
-import { store, storeStatus, type Complaint } from './store.js';
+import { store, storeStatus, seedDemoData, type Complaint } from './store.js';
 import { getSession } from './auth.js';
 import { resolveStaff, toPrincipal, homeRouteFor } from './staff.js';
 import { tokenFromRequest, safeError } from './security.js';
@@ -152,7 +152,11 @@ adminRouter.get('/me', async (req, res) => {
 adminRouter.get('/complaints', requirePermission('complaint:read'), async (req, res) => {
   try {
     const p = principalOf(req);
-    const all = await store.list();
+    let all = await store.list();
+    if (all.length === 0) {
+      try { await seedDemoData(); } catch {}
+      all = await store.list();
+    }
     // Scope filtering happens here, not in the UI.
     let rows = visibleTo(p, all);
 

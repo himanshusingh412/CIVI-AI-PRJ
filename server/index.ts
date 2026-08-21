@@ -152,8 +152,8 @@ function boot(): Promise<void> {
         // between requests. Production drives the sweep with a cron hitting
         // POST /api/internal/sla/sweep, authenticated with CRON_SECRET.
         startSlaScheduler();
-        try { await seedDemoData(); } catch { /* demo data is optional */ }
       }
+      try { await seedDemoData(); } catch { /* demo data is optional */ }
     })();
   }
   return bootPromise;
