@@ -135,9 +135,7 @@ createRoot(container).render(
                 <Routes>
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/login" element={staffRoute('Loading sign-in…', <SignInPage audience="citizen" />)} />
-                  <Route path="/staff" element={staffRoute('Loading sign-in…', <SignInPage audience="staff" />)} />
-                  {/* Employee ID + password. /staff remains the OTP/Google
-                      door for staff who have no password credential. */}
+                  <Route path="/staff" element={staffRoute('Loading sign-in…', <AdminLoginPage />)} />
                   <Route path="/admin/login" element={staffRoute('Loading sign-in…', <AdminLoginPage />)} />
 
                   <Route path="/portal" element={<CitizenPortal />} />
