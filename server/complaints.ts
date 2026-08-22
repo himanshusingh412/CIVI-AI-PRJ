@@ -7,6 +7,13 @@ import { generateJson, Type } from './providers.js';
 import { clampText } from './limits.js';
 import { resolveAutoAssignment } from './officers.js';
 
+export const complaintsRouter = express.Router();
+
+const notificationKey = (req: express.Request): string => {
+  const s = (req as any).session;
+  return String(s?.subjectHash || s?.identifier || 'anonymous');
+};
+
 /** Fields safe to show on the transparency feed. */
 function toPublic(c: Complaint) {
   return {
