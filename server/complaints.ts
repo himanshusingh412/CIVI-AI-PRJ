@@ -5,32 +5,7 @@ import { scoreDuplicates, classify } from './duplicates.js';
 import { notify } from './notifications.js';
 import { generateJson, Type } from './providers.js';
 import { clampText } from './limits.js';
-
-/**
- * Citizen-facing complaint API.
- *
- * The admin portal has talked to the real store since it was built; the
- * citizen app never did — it held complaints in React state seeded with
- * mock rows, so a refresh erased everything a citizen filed and the two
- * portals could not see each other's data. These are the endpoints that
- * close that gap.
- *
- * Scoping rule: the public feed is genuinely public, so it must never carry
- * a complainant's name, phone or email. Those fields are stripped here
- * rather than in the client, because a filter that runs in the browser is
- * not a filter — the data already crossed the network.
- */
-export const complaintsRouter = express.Router();
-
-/**
- * The in-app inbox is keyed on the session subject hash, matching
- * server/notificationRoutes.ts. Keying on anything the client sends would
- * let one person read another's notifications.
- */
-const notificationKey = (req: express.Request): string => {
-  const s = (req as any).session;
-  return String(s?.subjectHash || s?.identifier || 'anonymous');
-};
+import { resolveAutoAssignment } from './officers.js';
 
 /** Fields safe to show on the transparency feed. */
 function toPublic(c: Complaint) {
@@ -51,6 +26,9 @@ function toPublic(c: Complaint) {
     escalationLevel: c.escalationLevel,
     slaDeadline: c.slaDeadline,
     assignedOfficerName: c.assignedOfficerName,
+    assignedOfficerId: c.assignedOfficerId,
+    assignment: c.assignment,
+    assignmentHistory: c.assignmentHistory,
     citizenRating: c.citizenRating,
     timeline: c.timeline,
     publicUpdates: c.publicUpdates,
@@ -158,10 +136,15 @@ complaintsRouter.post('/', async (req, res) => {
   const top = matches[0];
   const verdict = top ? classify(top.score) : 'distinct';
 
+  const autoAssign = await resolveAutoAssignment(
+    b.category,
+    b.department,
+    b.state ?? 'Delhi',
+    b.district ?? 'New Delhi',
+    b.ward ?? undefined,
+  );
+
   const created = await store.create({
-    // Taken from the SESSION, never from the request body: a client-supplied
-    // value here would let anyone route another person's notifications to
-    // themselves.
     citizenSubjectHash: (req as any).session?.subjectHash,
     citizenName: b.citizenName ?? 'Anonymous',
     citizenPhone: b.citizenPhone ?? '',
@@ -173,9 +156,14 @@ complaintsRouter.post('/', async (req, res) => {
     ward: b.ward ?? undefined,
     lat: b.lat ?? undefined,
     lng: b.lng ?? undefined,
-    department: b.department ?? undefined,
-    status: 'submitted',
+    department: autoAssign.department,
+    assignedOfficerId: autoAssign.assignedOfficerId,
+    assignedOfficerName: autoAssign.assignedOfficerName,
+    status: autoAssign.status,
     priority: b.priority ?? 'Medium',
+    assignment: autoAssign.assignment,
+    assignmentHistory: autoAssign.assignmentHistory,
+    timeline: autoAssign.timeline,
   } as any);
 
   publish({ type: 'complaint_created', id: created.id });

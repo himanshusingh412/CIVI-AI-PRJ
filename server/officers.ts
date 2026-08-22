@@ -209,3 +209,101 @@ export async function resolveAssignee(
 
 /** Exposed for tests and for seeding. */
 export const _demoOfficers = DEMO_OFFICERS;
+
+const DEPT_MAP: Record<string, string> = {
+  'water supply': 'Water Department',
+  'water': 'Water Department',
+  'roads & infrastructure': 'Roads Department',
+  'roads & transport': 'Roads Department',
+  'roads': 'Roads Department',
+  'electricity': 'Electricity Board',
+  'sanitation': 'Sanitation Department',
+  'waste management': 'Sanitation Department',
+  'health': 'Health Department',
+  'healthcare': 'Health Department',
+  'police': 'Police Department',
+  'law & order': 'Police Department',
+  'transport': 'Transport Department',
+  'education': 'Education Department',
+};
+
+const DEFAULT_OFFICER_MAP: Record<string, { id: string; name: string; employeeId: string }> = {
+  'Water Department': { id: 'off-1', name: 'Suresh Kumar', employeeId: 'EMP-1001' },
+  'Roads Department': { id: 'off-2', name: 'Priya Sharma', employeeId: 'EMP-1002' },
+  'Sanitation Department': { id: 'off-3', name: 'Amit Verma', employeeId: 'EMP-1003' },
+  'Electricity Board': { id: 'off-elec-12', name: 'Ravi Chandra', employeeId: 'EMP-2012' },
+  'Transport Department': { id: 'off-trans-4', name: 'Imran Khan', employeeId: 'EMP-2004' },
+  'Police Department': { id: 'off-1', name: 'Suresh Kumar', employeeId: 'EMP-1001' },
+  'Health Department': { id: 'off-3', name: 'Amit Verma', employeeId: 'EMP-1003' },
+};
+
+export async function resolveAutoAssignment(
+  category: string,
+  rawDept?: string,
+  state = 'Delhi',
+  district = 'New Delhi',
+  ward?: string,
+) {
+  const normCategory = (category || '').toLowerCase().trim();
+  const department = rawDept || DEPT_MAP[normCategory] || 'Municipal Corporation';
+
+  const officers = await allOfficers();
+  let matched = officers.find(
+    o => o.active && o.department.toLowerCase() === department.toLowerCase() && (!ward || o.ward === ward),
+  );
+  if (!matched) {
+    matched = officers.find(o => o.active && o.department.toLowerCase() === department.toLowerCase());
+  }
+
+  const officer = matched || DEFAULT_OFFICER_MAP[department] || { id: 'off-1', name: 'Suresh Kumar', employeeId: 'EMP-1001' };
+  const empId = (officer as any).employeeId || (officer.id === 'off-1' ? 'EMP-1001' : officer.id === 'off-2' ? 'EMP-1002' : officer.id === 'off-3' ? 'EMP-1003' : 'EMP-1001');
+  const now = new Date().toISOString();
+
+  const assignment = {
+    officerId: officer.id,
+    officerName: officer.name,
+    employeeId: empId,
+    department,
+    district,
+    ward,
+    assignedBySubject: 'system:auto-assign',
+    assignedByRole: 'system',
+    assignedByName: 'AI Auto-Dispatcher',
+    assignedAt: now,
+  };
+
+  return {
+    department,
+    assignedOfficerId: officer.id,
+    assignedOfficerName: `${officer.name} (${empId})`,
+    status: 'officer_assigned' as const,
+    assignment,
+    assignmentHistory: [assignment],
+    timeline: [
+      {
+        at: now,
+        status: 'submitted',
+        actorId: 'system',
+        actorName: 'Citizen Portal',
+        note: 'Complaint received and registered.',
+        isPublic: true,
+      },
+      {
+        at: now,
+        status: 'department_assigned',
+        actorId: 'system:ai',
+        actorName: 'AI Classification Engine',
+        note: `Routed to ${department}.`,
+        isPublic: true,
+      },
+      {
+        at: now,
+        status: 'officer_assigned',
+        actorId: 'system:dispatcher',
+        actorName: 'AI Auto-Dispatcher',
+        note: `Automatically assigned to ${officer.name} (${empId}) for immediate resolution.`,
+        isPublic: true,
+      },
+    ],
+  };
+}

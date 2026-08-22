@@ -10,6 +10,7 @@ import { publish } from './events.js';
 import { notify } from './notifications.js';
 import { modeOf } from './config.js';
 import type { ChatTurn } from './limits.js';
+import { resolveAutoAssignment } from './officers.js';
 
 /**
  * WhatsApp as a complaint intake channel.
@@ -286,6 +287,14 @@ export async function handleInbound(message: InboundMessage): Promise<void> {
     .join(' ')
     .slice(0, 4000);
 
+  const autoAssign = await resolveAutoAssignment(
+    reply.category,
+    undefined,
+    'Delhi',
+    'New Delhi',
+    reply.location?.label,
+  );
+
   const created = await store.create({
     citizenName: 'WhatsApp user',
     citizenPhone: phone,
@@ -296,8 +305,14 @@ export async function handleInbound(message: InboundMessage): Promise<void> {
     ward: reply.location?.label,
     lat: reply.location?.lat ?? convo.coords?.lat,
     lng: reply.location?.lng ?? convo.coords?.lng,
-    status: 'submitted',
+    department: autoAssign.department,
+    assignedOfficerId: autoAssign.assignedOfficerId,
+    assignedOfficerName: autoAssign.assignedOfficerName,
+    status: autoAssign.status,
     priority: reply.priority,
+    assignment: autoAssign.assignment,
+    assignmentHistory: autoAssign.assignmentHistory,
+    timeline: autoAssign.timeline,
   } as any);
 
   publish({ type: 'complaint_created', id: created.id });
