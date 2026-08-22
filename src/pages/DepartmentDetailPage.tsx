@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { fetchDepartmentDetail, fetchOfficers, type AdminComplaint, type DepartmentSummary, type AssignableOfficer, isAuthError } from '../services/adminService';
 import { statusLabel, departmentLabel } from '../i18n/labels';
 import { useT } from '../i18n/I18nContext';
+import { formatOfficerWithEmpId } from '../services/officerUtils';
 
 export function DepartmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -138,9 +139,10 @@ export function DepartmentDetailPage() {
                         <td className="py-3 px-4 font-semibold text-content">{c.priority}</td>
                         <td className="py-3 px-4 text-content-3">{c.district || 'Unassigned'} / Ward {c.ward || '—'}</td>
                         <td className="py-3 px-4 text-content-2 font-medium">
-                          {c.assignedOfficerId ? (
-                            <span className="flex items-center gap-1 text-success font-semibold">
-                              <UserCheck size={13} /> Assigned
+                          {c.assignedOfficerId || c.assignedOfficerName ? (
+                            <span className="flex items-center gap-1.5 font-semibold text-content">
+                              <UserCheck size={13} className="text-success shrink-0" />
+                              <span>{formatOfficerWithEmpId(c.assignedOfficerName || 'Assigned Officer')}</span>
                             </span>
                           ) : (
                             <span className="text-warning font-semibold">Unassigned</span>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { formatOfficerWithEmpId } from './services/officerUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageSquare,
@@ -643,7 +644,7 @@ export default function App() {
       const found = complaints.find(c => c.id === text.toUpperCase().trim());
       setChatStep(null);
       if (found) {
-        botReply(`Found your complaint!\n\n🆔 ID: ${found.id}\n📊 Status: ${found.status}\n📅 Filed: ${found.date}\n👮 Officer: ${found.officer}`);
+        botReply(`Found your complaint!\n\n🆔 ID: ${found.id}\n📊 Status: ${found.status}\n📅 Filed: ${found.date}\n👮 Officer: ${formatOfficerWithEmpId(found.officer, found.officerEmpId)}`);
       } else {
         botReply(r.notFound);
       }
@@ -1964,7 +1965,7 @@ export default function App() {
                   <DetailField label="Current Status" value={<StatusBadge status={selectedComplaint.status} />} />
                   <DetailField label="Date Filed" value={selectedComplaint.date} />
                   <DetailField label="Category" value={selectedComplaint.category} />
-                  <DetailField label="Assigned Officer" value={selectedComplaint.officer} />
+                  <DetailField label="Assigned Officer" value={formatOfficerWithEmpId(selectedComplaint.officer, selectedComplaint.officerEmpId)} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

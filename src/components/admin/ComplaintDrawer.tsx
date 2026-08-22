@@ -6,6 +6,7 @@ import { changeStatus, addNote, isAuthError, type AdminComplaint } from '../../s
 import { useT } from '../../i18n/I18nContext';
 import { statusLabel, departmentLabel, roleLabel } from '../../i18n/labels';
 import { AssignOfficer } from './AssignOfficer';
+import { formatOfficerWithEmpId } from '../../services/officerUtils';
 
 const PRIORITY_TOKEN: Record<string, string> = {
   Critical: 'var(--color-priority-critical)',
@@ -154,7 +155,7 @@ export function ComplaintDrawer({
             <Field icon={<User size={13} />} label="Citizen" value={complaint.citizenName} />
             <Field icon={<Clock size={13} />} label="Contact" value={complaint.citizenPhone} mono />
             <Field icon={<Building2 size={13} />} label="Department" value={complaint.department ?? 'Unassigned'} />
-            <Field icon={<User size={13} />} label="Officer" value={complaint.assignedOfficerName ?? 'Unassigned'} />
+            <Field icon={<User size={13} />} label="Officer" value={formatOfficerWithEmpId(complaint.assignedOfficerName)} />
             <Field icon={<MapPin size={13} />} label="District" value={`${complaint.district}, ${complaint.state}`} />
             <Field
               icon={<Clock size={13} />}
@@ -336,13 +337,11 @@ export function ComplaintDrawer({
               <div className="surface-2 rounded-xl p-4 space-y-3">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-wide text-content-3">{t('assign.assignedTo')}</p>
-                  <p className="text-sm font-bold text-content">
-                    {complaint.assignment.officerName}
-                    {complaint.assignment.employeeId && (
-                      <span className="ml-2 font-mono text-[11px] font-semibold text-content-3">
-                        {complaint.assignment.employeeId}
-                      </span>
-                    )}
+                  <p className="text-sm font-bold text-content flex items-center gap-2">
+                    <span>{complaint.assignment.officerName}</span>
+                    <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-extrabold uppercase tracking-wider" style={{ background: 'var(--color-cta-pale)', color: 'var(--color-cta)' }}>
+                      {complaint.assignment.employeeId || formatOfficerWithEmpId(complaint.assignment.officerName).match(/\((EMP-[^)]+)\)/)?.[1] || 'EMP-OFFICER'}
+                    </span>
                   </p>
                   <p className="text-[12px] text-content-3">
                     {[

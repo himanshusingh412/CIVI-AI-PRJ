@@ -15,6 +15,7 @@ export interface Complaint {
   rating?: number;
   feedback?: string;
   officer: string;
+  officerEmpId?: string;
   date: string;
   deadline: number; // Timestamp
   timestamp: number;
